@@ -95,3 +95,17 @@ The bridge does not kill programs if the port is occupied. Close the actual prog
 This mode sends the task and initial desktop accessibility summary to the AI website in the active tab. The AI website is a third-party service; its normal account, retention, and policy conditions apply. Do not use this mode with sensitive screens.
 
 The bridge binds to 127.0.0.1, validates a random token, rejects other browser origins, and only dispatches an explicit allow-list. It is not a security boundary against malware running under your Windows account. Keep the extension and token private, and stop the bridge when you are finished.
+
+
+## CMD microphone → active ChatGPT/Gemini tab
+
+The foreground voice bridge is separate from the background face-recognition listener and from computer-control consent.
+
+1. Start the local bridge using `start.bat` → option 2 and keep it running.
+2. Reload the unpacked extension from `chrome://extensions` or `edge://extensions`, then refresh the ChatGPT or Gemini tab.
+3. In a terminal at the repository root, run `python -m darkspirit_companion --voice-browser` (or the equivalent command in your environment).
+4. Type `y` only if you want to grant microphone and transcript-submission permission for this run. Permission is not persisted; restart requires approval again.
+5. Speak normally. Vosk transcription is local. After five seconds without speech, the companion submits the transcript through the localhost queue to the active ChatGPT/Gemini tab. Keep the desired AI tab focused and visible.
+6. Say “stop listening” or press Ctrl+C to stop. This does not enable desktop actions; computer actions still require their separate browser-panel consent and per-action approval.
+
+The bridge binds to loopback only and creates a random per-run token in `%LOCALAPPDATA%\\DarkspiritAgent\\voice-bridge.token`. Do not share that file. The token is replaced when the bridge restarts. No audio is uploaded by the Vosk transcription path; the resulting text is sent to the AI website when submitted.
