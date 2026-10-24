@@ -214,6 +214,7 @@ def listen_for_speech(model_path: str) -> None:
 
 
 def run_background() -> None:
+    """Check for the enrolled face periodically, releasing the camera between checks."""
     configure_logging()
     config = load_config()
     if not config.get("camera_enabled") or not config.get("face_enrolled"):
@@ -233,61 +234,89 @@ def run_background() -> None:
     )
     recognizer = cv2.face.LBPHFaceRecognizer_create()
     recognizer.read(str(FACE_MODEL_PATH))
-    camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    if not camera.isOpened():
-        logging.error("Camera unavailable; background companion stopping.")
-        camera.release()
-        return
 
+    # Privacy mode: the webcam is opened only for a short check, then released.
+    # These values can be adjusted later if detection is too slow or too frequent.
+    camera_active_seconds = 2.0
+    camera_sleep_seconds = 5.0
+    greeting_reset_seconds = 30.0
     greeted = False
-    absent_since = time.monotonic()
-    logging.info("Background companion started; camera active under saved consent.")
+    last_recognized_at: float | None = None
+    logging.info(
+        "Background companion started in privacy mode: camera active for %.1fs, "
+        "then released for %.1fs.",
+        camera_active_seconds,
+        camera_sleep_seconds,
+    )
+
     try:
         while True:
-            ok, frame = camera.read()
-            if not ok:
-                time.sleep(0.25)
+            # Re-check saved consent each cycle so turning the camera off in the
+            # config stops further camera access without needing to restart.
+            config = load_config()
+            if not config.get("camera_enabled") or not config.get("face_enrolled"):
+                logging.info("Camera consent disabled or face enrollment removed; stopping camera checks.")
+                break
+
+            camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+            if not camera.isOpened():
+                logging.warning("Camera unavailable during privacy check; retrying after pause.")
+                camera.release()
+                time.sleep(camera_sleep_seconds)
                 continue
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = detector.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(100, 100))
-            recognized = False
-            for x, y, w, h in faces:
-                face = cv2.resize(gray[y : y + h, x : x + w], (160, 160))
-                label, confidence = recognizer.predict(face)
-                if label == 0 and confidence < 65:
-                    recognized = True
-                    break
-            if recognized:
-                absent_since = time.monotonic()
-                if not greeted:
-                    name = str(config.get("user_name") or "there").replace("'", "")
-                    logging.info("Enrolled face recognized; greeting played.")
-                    if config.get("greet_on_recognition", True):
-                        speak(f"Hello {name}. I'm Darkspirit. I'm here when you need me.")
-                    greeted = True
-                    if config.get("microphone_enabled") and config.get("listen_after_greeting"):
-                        camera.release()
-                        try:
-                            listen_for_speech(str(config.get("vosk_model_path", "")))
-                        except Exception:
-                            logging.exception("Local voice input failed.")
-                            # Do not repeatedly reopen the microphone or replay the greeting
-                            # every time voice setup fails. Keep this session in camera-only mode.
-                            config["microphone_enabled"] = False
-                            logging.warning("Voice input disabled for this run after startup failure.")
-                            speak("My microphone setup needs attention. I'll stay available without listening.")
-                        camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-                        if not camera.isOpened():
-                            logging.error("Camera could not be reopened after voice session.")
+
+            check_started = time.monotonic()
+            try:
+                while time.monotonic() - check_started < camera_active_seconds:
+                    ok, frame = camera.read()
+                    if not ok:
+                        time.sleep(0.05)
+                        continue
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    faces = detector.detectMultiScale(
+                        gray, scaleFactor=1.2, minNeighbors=5, minSize=(100, 100)
+                    )
+                    recognized = False
+                    for x, y, w, h in faces:
+                        face = cv2.resize(gray[y : y + h, x : x + w], (160, 160))
+                        label, confidence = recognizer.predict(face)
+                        if label == 0 and confidence < 65:
+                            recognized = True
                             break
-            elif time.monotonic() - absent_since > 30:
-                greeted = False
-            time.sleep(0.08)
+
+                    now = time.monotonic()
+                    if recognized:
+                        last_recognized_at = now
+                        if not greeted:
+                            name = str(config.get("user_name") or "there").replace("'", "")
+                            logging.info("Enrolled face recognized; greeting played.")
+                            if config.get("greet_on_recognition", True):
+                                speak(f"Hello {name}. I'm Darkspirit. I'm here when you need me.")
+                            greeted = True
+                            if config.get("microphone_enabled") and config.get("listen_after_greeting"):
+                                try:
+                                    listen_for_speech(str(config.get("vosk_model_path", "")))
+                                except Exception:
+                                    logging.exception("Local voice input failed.")
+                                    config["microphone_enabled"] = False
+                                    logging.warning("Voice input disabled for this run after startup failure.")
+                                    speak("My microphone setup needs attention. I'll stay available without listening.")
+                    elif greeted and last_recognized_at is not None:
+                        if now - last_recognized_at > greeting_reset_seconds:
+                            greeted = False
+                            last_recognized_at = None
+                            logging.info("Face absent for %.0f seconds; greeting re-armed.", greeting_reset_seconds)
+                    time.sleep(0.08)
+            finally:
+                # Release the device after every short check, including errors.
+                camera.release()
+                logging.info("Privacy check finished; camera released.")
+
+            time.sleep(camera_sleep_seconds)
     except KeyboardInterrupt:
         logging.info("Background companion stopped by keyboard interrupt.")
     finally:
-        camera.release()
-        logging.info("Background companion stopped; camera released.")
+        logging.info("Background companion stopped.")
 
 
 def main() -> None:
