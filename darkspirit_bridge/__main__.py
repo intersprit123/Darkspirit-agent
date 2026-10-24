@@ -3,6 +3,7 @@
 Only a small allow-list is exposed. Shell, file, memory, and arbitrary-code tools are
 intentionally unavailable to browser-originated requests.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -143,24 +144,43 @@ def desktop_snapshot() -> str:
     if tree and tree.status:
         for index, node in enumerate((tree.interactive_nodes or [])[:70]):
             interactive.append(
-                str(index) + "|" + _safe_label(node.window_name) + "|"
-                + _safe_label(node.control_type) + "|" + _safe_label(node.name, node.control_type)
-                + "|" + node.center.to_string()
+                str(index)
+                + "|"
+                + _safe_label(node.window_name)
+                + "|"
+                + _safe_label(node.control_type)
+                + "|"
+                + _safe_label(node.name, node.control_type)
+                + "|"
+                + node.center.to_string()
             )
         base = len(tree.interactive_nodes or [])
         for offset, node in enumerate((tree.scrollable_nodes or [])[:25]):
             scrollable.append(
-                str(base + offset) + "|" + _safe_label(node.window_name) + "|"
-                + _safe_label(node.control_type) + "|" + _safe_label(node.name, node.control_type)
-                + "|" + node.center.to_string()
+                str(base + offset)
+                + "|"
+                + _safe_label(node.window_name)
+                + "|"
+                + _safe_label(node.control_type)
+                + "|"
+                + _safe_label(node.name, node.control_type)
+                + "|"
+                + node.center.to_string()
             )
     else:
         interactive.append("Accessibility tree unavailable.")
     return (
-        "Active window: " + active + "\n"
-        + "Other visible windows: " + json.dumps(windows, ensure_ascii=False) + "\n\n"
-        + "Interactive elements (input values omitted):\n" + "\n".join(interactive)[:8000] + "\n\n"
-        + "Scrollable elements: \n" + "\n".join(scrollable)[:2500]
+        "Active window: "
+        + active
+        + "\n"
+        + "Other visible windows: "
+        + json.dumps(windows, ensure_ascii=False)
+        + "\n\n"
+        + "Interactive elements (input values omitted):\n"
+        + "\n".join(interactive)[:8000]
+        + "\n\n"
+        + "Scrollable elements: \n"
+        + "\n".join(scrollable)[:2500]
     )[:MAX_TOOL_OUTPUT_CHARS]
 
 
@@ -194,10 +214,11 @@ async def handle_message(websocket, message: dict[str, Any]) -> None:
         return
     if kind == "set_actions":
         _actions_enabled = bool(message.get("enabled", False))
-        await send_response(
-            websocket, "actions_mode", rid, actions_enabled=_actions_enabled
+        await send_response(websocket, "actions_mode", rid, actions_enabled=_actions_enabled)
+        print(
+            "[bridge] Computer actions "
+            + ("ENABLED for this session." if _actions_enabled else "disabled.")
         )
-        print("[bridge] Computer actions " + ("ENABLED for this session." if _actions_enabled else "disabled."))
         return
     if kind != "call_tool":
         await send_response(websocket, "error", rid, error="Unsupported request type.")
@@ -299,9 +320,7 @@ async def handler(websocket) -> None:
             return
 
         await websocket.send(
-            json.dumps(
-                {"type": "ready", "mode": "browser-ai", "actions_enabled": _actions_enabled}
-            )
+            json.dumps({"type": "ready", "mode": "browser-ai", "actions_enabled": _actions_enabled})
         )
         async for raw in websocket:
             if not isinstance(raw, str) or len(raw.encode("utf-8")) > MAX_MESSAGE_BYTES:
@@ -310,10 +329,14 @@ async def handler(websocket) -> None:
             try:
                 message = json.loads(raw)
             except json.JSONDecodeError:
-                await websocket.send(json.dumps({"type": "error", "id": None, "error": "Invalid JSON"}))
+                await websocket.send(
+                    json.dumps({"type": "error", "id": None, "error": "Invalid JSON"})
+                )
                 continue
             if not isinstance(message, dict):
-                await websocket.send(json.dumps({"type": "error", "id": None, "error": "Expected JSON object"}))
+                await websocket.send(
+                    json.dumps({"type": "error", "id": None, "error": "Expected JSON object"})
+                )
                 continue
             await handle_message(websocket, message)
     except (asyncio.TimeoutError, ConnectionClosed):
