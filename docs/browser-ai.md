@@ -10,6 +10,8 @@ Darkspirit Agent can use the AI chat page already open in Microsoft Edge or Goog
 - A limited Windows-Use tool catalogue: application/window actions, mouse/keyboard actions, scrolling, waiting, and a read-only desktop summary.
 - Per-action confirmation enabled by default.
 - A 30-step limit per task.
+- Browser-native text-to-speech using the default system voice; no Fish Audio key or external speech service is needed.
+- An in-panel default-voice test button, stop button, and saved **Speak new AI replies aloud** setting.
 
 The browser bridge does not expose Windows-Use shell, arbitrary-code, direct file-management, or memory tools. Because UI automation can still be misused (for example, by opening a terminal in the UI), inspect each action preview before approving it. Do not approve an action you do not understand.
 
@@ -34,6 +36,20 @@ This does not install a browser, alter browser profiles, download an AI model, o
 8. Choose **Test bridge**. It should report that the bridge is connected and show the number of available tools.
 
 Never commit the pairing token or share it in screenshots, chat messages, or issues. If the token is exposed, delete the local token file at %USERPROFILE%\.darkspirit-agent\bridge.token and restart the bridge to generate a new one, then save the new token in the extension popup.
+
+## Default voice and speech testing
+
+On ChatGPT or Gemini pages, the extension can read new assistant replies aloud using the browser's built-in `chrome.tts` extension API. On Windows, Chromium's extension TTS uses operating-system speech synthesis by default and chooses an appropriate voice for the requested language. The extension requests English (United States) and does not select a custom voice, call Fish Audio, or need a speech API key. The actual voice therefore depends on the default voice installed and selected on Windows/browser.
+
+The panel's **Speak new AI replies aloud** checkbox is on by default and is remembered in extension storage. **Test voice** speaks a short sample, and **Stop voice** cancels queued/current speech. Tool-call JSON is not read aloud; a final `done_tool` answer may be spoken. These controls only change speech, not the bridge task loop.
+
+To test:
+1. Open a ChatGPT or Gemini page and refresh it after reloading the extension.
+2. Select **Test voice** in the Darkspirit panel. You should hear: “Hello! This is Darkspirit using your browser's default voice.”
+3. Ask the AI a simple question and leave **Speak new AI replies aloud** checked.
+4. If the test button is accepted but silent, check Windows output volume and Settings > Accessibility > Narrator/Voice or Windows speech settings, then check the extension's service-worker console for a TTS error. The extension reports browser TTS errors in the panel when the page is open.
+
+This is local browser/OS speech synthesis rather than a custom character voice. Browser support is documented at [Chrome's TTS API reference](https://developer.chrome.com/docs/extensions/reference/api/tts) and [MDN's Web Speech API reference](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis).
 
 ## Run a first task
 
