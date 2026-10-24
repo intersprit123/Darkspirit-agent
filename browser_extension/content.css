@@ -1,4 +1,4 @@
-#darkspirit-agent-panel{position:fixed;right:18px;bottom:18px;z-index:2147483647;width:340px;max-height:80vh;overflow:auto;box-sizing:border-box;background:#101827;color:#f8fafc;border:1px solid #35445e;border-radius:13px;box-shadow:0 12px 38px #0007;padding:14px;font:13px/1.45 system-ui,Segoe UI,sans-serif}
+#darkspirit-agent-panel{position:fixed;right:18px;top:18px;z-index:2147483647;width:340px;max-height:80vh;overflow:auto;box-sizing:border-box;background:#101827;color:#f8fafc;border:1px solid #35445e;border-radius:13px;box-shadow:0 12px 38px #0007;padding:14px;font:13px/1.45 system-ui,Segoe UI,sans-serif}
 #darkspirit-agent-panel *{box-sizing:border-box}
 #darkspirit-agent-panel .ds-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
 #darkspirit-agent-panel .ds-title{font-size:15px;font-weight:800}
@@ -16,4 +16,4 @@
 #darkspirit-agent-panel .ds-preview{white-space:pre-wrap;overflow-wrap:anywhere;max-height:170px;overflow:auto;background:#0b1220;border:1px solid #475569;border-radius:7px;padding:8px;font:11px/1.4 ui-monospace,Consolas,monospace;color:#d7e2f2}
 #darkspirit-agent-panel .ds-hidden{display:none!important}
 #darkspirit-agent-panel .ds-footer{font-size:10px;color:#9fb0c7;margin-top:8px}
-@media(max-width:600px){#darkspirit-agent-panel{right:8px;bottom:8px;width:min(340px,calc(100vw - 16px));max-height:70vh}}
+@media(max-width:600px){#darkspirit-agent-panel{right:8px;top:8px;width:min(340px,calc(100vw - 16px));max-height:70vh}}
