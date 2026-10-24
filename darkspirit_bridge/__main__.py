@@ -21,8 +21,8 @@ PORT = 17613
 TOKEN_FILE = Path.home() / ".darkspirit-agent" / "bridge.token"
 MAX_MESSAGE_BYTES = 32_768
 MAX_TOOL_OUTPUT_CHARS = 10_000
-_EMAIL_RE = re.compile(r"\\b[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}\\b")
-_LONG_NUMBER_RE = re.compile(r"\\b(?:\\d[ -]?){8,}\\b")
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
+_LONG_NUMBER_RE = re.compile(r"\b(?:\d[ -]?){8,}\b")
 EXTENSION_ORIGIN = re.compile(r"^chrome-extension://[a-p]{32}$")
 
 ACTION_TOOLS = {
@@ -124,7 +124,7 @@ def get_tool_catalog() -> list[dict[str, Any]]:
 
 
 def _safe_label(value: Any, control_type: str = "") -> str:
-    text = str(value or "").replace("\\r", " ").replace("\\n", " ").strip()
+    text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
     if any(word in control_type.lower() for word in ("edit", "textbox", "document", "password")):
         return "[input contents hidden]"
     text = _EMAIL_RE.sub("[redacted email]", text)
@@ -157,10 +157,10 @@ def desktop_snapshot() -> str:
     else:
         interactive.append("Accessibility tree unavailable.")
     return (
-        "Active window: " + active + "\\n"
-        + "Other visible windows: " + json.dumps(windows, ensure_ascii=False) + "\\n\\n"
-        + "Interactive elements (input values omitted):\\n" + "\\n".join(interactive)[:8000] + "\\n\\n"
-        + "Scrollable elements: \\n" + "\\n".join(scrollable)[:2500]
+        "Active window: " + active + "\n"
+        + "Other visible windows: " + json.dumps(windows, ensure_ascii=False) + "\n\n"
+        + "Interactive elements (input values omitted):\n" + "\n".join(interactive)[:8000] + "\n\n"
+        + "Scrollable elements: \n" + "\n".join(scrollable)[:2500]
     )[:MAX_TOOL_OUTPUT_CHARS]
 
 
