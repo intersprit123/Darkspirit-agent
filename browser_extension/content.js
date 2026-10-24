@@ -388,6 +388,7 @@
       void runAgentLoop(current, baseline);
     } catch (error) {
       if (session) session.running = false;
+      try { await bridgeRequest({ type: "set_actions", enabled: false }); } catch (_) {}
       startButton.disabled = false;
       stopButton.disabled = true;
       actionsToggle.disabled = false;
