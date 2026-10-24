@@ -152,9 +152,14 @@ def configure() -> None:
     print("Camera and microphone default to OFF. Nothing is recorded during setup.")
     config["user_name"] = input("What should Darkspirit call you? ").strip()[:80]
     config["camera_enabled"] = input("Enable webcam face recognition? [y/N] ").strip().lower() == "y"
+    # Persist consent before enrollment: enroll_face() loads and updates the saved config.
+    save_config(config)
     if config["camera_enabled"]:
         enroll_face()
         config = load_config()
+        # Enrollment may update face_enrolled; preserve the explicit camera consent.
+        config["camera_enabled"] = True
+        save_config(config)
     config["microphone_enabled"] = (
         input("Enable local microphone listening after face recognition? [y/N] ").strip().lower() == "y"
     )
