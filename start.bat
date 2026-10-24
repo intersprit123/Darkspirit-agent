@@ -3,56 +3,70 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 title Darkspirit Agent
 
-echo ========================================
-echo       Darkspirit Agent - Safe Launcher
-echo ========================================
-echo.
-
-if not exist ".venv\Scripts\python.exe" (
-  echo [ERROR] Project virtual environment was not found.
-  echo Run: uv sync
-  pause
-  exit /b 1
-)
-
+if /I "%~1"=="--install" goto install
 if /I "%~1"=="--browser-bridge" goto browser_bridge
 if /I "%~1"=="--local-ollama" goto local_ollama
 
-echo Choose a mode:
-echo   1. Check setup only
-echo   2. Start browser bridge (observe-only scaffold)
-echo   3. Start local Ollama agent
-echo   4. Exit
+:menu
+cls
+echo ========================================
+echo        DARKSPIRIT AGENT
+echo ========================================
+echo.
+echo  1. Install / update all project dependencies
+echo  2. Start Browser AI bridge (ChatGPT / Gemini)
+echo  3. Start local Ollama agent (computer control)
+echo  4. Exit
 echo.
 choice /c 1234 /n /m "Select 1-4: "
 if errorlevel 4 exit /b 0
 if errorlevel 3 goto local_ollama
 if errorlevel 2 goto browser_bridge
+if errorlevel 1 goto install
 
-echo [OK] Virtual environment exists.
-".venv\Scripts\python.exe" --version
-echo [INFO] GUI and computer-control agent were not started.
-pause
-exit /b 0
+:install
+call "%~dp0install.bat"
+if errorlevel 1 (
+  echo.
+  echo Installation failed. Read the error above.
+  pause
+)
+goto menu
 
 :browser_bridge
-echo [INFO] Starting localhost browser bridge in OBSERVE-ONLY mode.
-echo [INFO] This scaffold does not execute computer actions.
+if not exist ".venv\Scripts\python.exe" (
+  echo [ERROR] Dependencies are not installed yet.
+  echo Please choose option 1 first.
+  pause
+  goto menu
+)
+echo.
+echo Starting local bridge. Keep this window open.
+echo Paste the pairing token below into the Browser AI extension popup.
+echo The bridge starts with computer actions disabled.
+echo.
 ".venv\Scripts\python.exe" -m darkspirit_bridge
 set "RC=%ERRORLEVEL%"
 echo.
-echo Bridge exited with code %RC%.
+echo Bridge stopped with exit code %RC%.
 pause
-exit /b %RC%
+goto menu
 
 :local_ollama
-echo [WARNING] This mode can enable Windows computer control through the existing agent.
-echo Only continue if you understand that tasks may click, type, and run commands.
-choice /c YN /n /m "Continue? [Y/N] "
-if errorlevel 2 exit /b 0
+if not exist ".venv\Scripts\python.exe" (
+  echo [ERROR] Dependencies are not installed yet.
+  echo Please choose option 1 first.
+  pause
+  goto menu
+)
+echo.
+echo WARNING: Local agent tasks can click, type, and change Windows UI.
+echo This is separate from the browser extension and can act on your PC.
+choice /c YN /n /m "Launch Ollama agent with a 10-step limit? [Y/N] "
+if errorlevel 2 goto menu
 ".venv\Scripts\python.exe" main.py --provider ollama --model qwen3:4b --max-steps 10
 set "RC=%ERRORLEVEL%"
 echo.
-echo Agent exited with code %RC%.
+echo Ollama agent exited with code %RC%.
 pause
-exit /b %RC%
+goto menu
