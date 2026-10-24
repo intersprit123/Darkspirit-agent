@@ -410,10 +410,11 @@ def run_background() -> None:
         logging.exception("Face recognition could not initialize; camera remains off.")
         return
 
-    # Privacy mode: the webcam is opened only for a short check, then released.
-    # These values can be adjusted later if detection is too slow or too frequent.
-    camera_active_seconds = 2.0
-    camera_sleep_seconds = 5.0
+    # Keep the camera open for continuous face detection instead of repeatedly
+    # releasing it (which caused the camera indicator to flicker). The hardware
+    # privacy indicator remains controlled by Windows/the camera hardware.
+    camera_active_seconds = 3600.0
+    camera_sleep_seconds = 0.1
     greeting_reset_seconds = 30.0
     greeted = False
     last_recognized_at: float | None = None
@@ -445,10 +446,8 @@ def run_background() -> None:
         voice_thread.start()
 
     logging.info(
-        "Background companion started in privacy mode: camera active for %.1fs, "
-        "then released for %.1fs.",
-        camera_active_seconds,
-        camera_sleep_seconds,
+        "Background companion started: continuous camera face detection enabled; "
+        "camera remains open while enabled. Hardware indicator is unchanged."
     )
 
     try:
@@ -545,7 +544,7 @@ def run_background() -> None:
             finally:
                 # Release the device after every short check, including errors.
                 camera.release()
-                logging.info("Privacy check finished; camera released.")
+                logging.info("Camera capture interval ended; camera released before reconnecting.")
 
             if camera_frames_read == 0 or camera_check_failed:
                 # A camera that cannot reliably verify presence must not leave the
