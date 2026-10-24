@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/browser-ai-bridge]
   pull_request:
     branches: [main]
 
@@ -34,6 +34,18 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --extra dev
+
+      - name: Install Node.js for extension syntax checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check Python and extension syntax
+        run: |
+          uv run python -m compileall -q darkspirit_bridge
+          node --check browser_extension/background.js
+          node --check browser_extension/content.js
+          node --check browser_extension/popup.js
 
       - name: Run unit tests
         run: uv run pytest tests/unit/ -v --tb=short
