@@ -60,14 +60,23 @@ function requestBridge(payload) {
 }
 
 function sendVoiceStatus(sender, status, error) {
-  if (!sender || !sender.tab || typeof sender.tab.id !== "number") return;
-  chrome.tabs.sendMessage(sender.tab.id, {
+  const message = {
     type: "ttsStatus",
     status: status,
-    error: error || ""
-  }, function () {
-    void chrome.runtime.lastError;
-  });
+    error: error || "",
+    target: sender && sender.tab && typeof sender.tab.id === "number" ? "tab" : "popup"
+  };
+  if (message.target === "tab") {
+    chrome.tabs.sendMessage(sender.tab.id, message, function () {
+      // A tab may have navigated away before the speech event arrives.
+      void chrome.runtime.lastError;
+    });
+  } else {
+    chrome.runtime.sendMessage(message, function () {
+      // The popup may have closed before the speech event arrives.
+      void chrome.runtime.lastError;
+    });
+  }
 }
 
 function speakWithBrowserVoice(text, sender, sendResponse, enqueue) {
