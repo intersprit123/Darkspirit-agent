@@ -222,7 +222,9 @@ def run() -> None:
 
     try:
         ensure_bridge()
-        open_gemini()
+        logging.info(
+            "Voice routing will use the active ChatGPT/Gemini tab; leaving the current browser page untouched."
+        )
         token = TOKEN_PATH.read_text(encoding="utf-8").strip()
         config_path = APP_DIR / "companion.json"
         config: dict[str, Any] = {}
