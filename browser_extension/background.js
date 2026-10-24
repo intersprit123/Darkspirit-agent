@@ -126,12 +126,46 @@ function speakWithBrowserVoice(text, sender, sendResponse, enqueue) {
 
 let voicePollTimer = null;
 let voiceBridgeToken = null;
-async function pollVoiceQueue() {
+let pendingVoiceText = null;
+let voicePollInFlight = false;
+
+async function deliverPendingVoice() {
+  if (!pendingVoiceText) return false;
+  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const tab = tabs.find(function (candidate) {
+    return candidate.url && /^https:\/\/(chatgpt\.com|chat\.openai\.com|gemini\.google\.com)\//i.test(candidate.url);
+  });
+  if (!tab || typeof tab.id !== "number") return false;
+
   try {
+    await chrome.tabs.sendMessage(tab.id, {
+      type: "darkspiritVoiceSubmit",
+      text: pendingVoiceText
+    });
+    pendingVoiceText = null;
+    return true;
+  } catch (_) {
+    // Keep the transcript queued locally and retry when the content script is ready.
+    return false;
+  }
+}
+
+async function pollVoiceQueue() {
+  if (voicePollInFlight) return;
+  voicePollInFlight = true;
+  try {
+    // Deliver an already-fetched transcript before asking the bridge for another.
+    if (pendingVoiceText) {
+      await deliverPendingVoice();
+      if (pendingVoiceText) return;
+    }
     if (!voiceBridgeToken) {
       const tokenResponse = await fetch("http://127.0.0.1:17614/token", { cache: "no-store" });
       if (!tokenResponse.ok) throw new Error("Voice bridge is not running");
       const tokenData = await tokenResponse.json();
+      if (!tokenData || typeof tokenData.token !== "string" || !tokenData.token) {
+        throw new Error("Voice bridge returned an invalid token");
+      }
       voiceBridgeToken = tokenData.token;
     }
     const response = await fetch("http://127.0.0.1:17614/next", {
@@ -140,24 +174,29 @@ async function pollVoiceQueue() {
     });
     if (!response.ok) throw new Error("Voice queue request failed");
     const data = await response.json();
-    if (data.text) {
-      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      const tab = tabs.find(function (candidate) {
-        return candidate.url && /^https:\/\/(chatgpt\.com|chat\.openai\.com|gemini\.google\.com)\//i.test(candidate.url);
-      });
-      if (tab && tab.id) {
-        await chrome.tabs.sendMessage(tab.id, { type: "darkspiritVoiceSubmit", text: data.text });
-      }
+    if (typeof data.text === "string" && data.text.trim()) {
+      pendingVoiceText = data.text.trim();
+      await deliverPendingVoice();
     }
-  } catch (error) {
+  } catch (_) {
     voiceBridgeToken = null;
+  } finally {
+    voicePollInFlight = false;
   }
 }
+
 function startVoiceQueuePolling() {
-  if (voicePollTimer) return;
+  if (voicePollTimer) clearInterval(voicePollTimer);
+  // Fast polling while the MV3 worker is awake; the alarm is a recovery path
+  // after the browser suspends and later wakes the service worker.
   pollVoiceQueue();
-  voicePollTimer = setInterval(pollVoiceQueue, 500);
+  voicePollTimer = setInterval(pollVoiceQueue, 1000);
+  chrome.alarms.create("darkspirit-voice-queue", { periodInMinutes: 1 });
 }
+
+chrome.alarms.onAlarm.addListener(function (alarm) {
+  if (alarm && alarm.name === "darkspirit-voice-queue") pollVoiceQueue();
+});
 chrome.runtime.onStartup.addListener(startVoiceQueuePolling);
 chrome.runtime.onInstalled.addListener(startVoiceQueuePolling);
 startVoiceQueuePolling();
