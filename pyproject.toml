@@ -9,7 +9,7 @@ readme = "README.md"
 license = 'MIT'
 license-files = ["LICENSE"]
 urls = { homepage = "https://github.com/CursorTouch" }
-keywords = ["windows", "agent", "ai", "desktop","ai agent","automation"]
+keywords = ["windows", "agent", "desktop", "ai agent", "automation"]
 requires-python = ">=3.10"
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -74,7 +74,7 @@ dev = [
     "ruff>=0.12.1",
 ]
 companion = [
-    "opencv-contrib-python>=4.10.0",
+    "opencv-contrib-python>=4.10.0,<5.0.0",
     "numpy>=1.26.0",
     "sounddevice>=0.5.0",
     "vosk>=0.3.45",
