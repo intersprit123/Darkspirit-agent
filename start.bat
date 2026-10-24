@@ -17,10 +17,12 @@ echo.
 echo  1. Install / update all project dependencies
 echo  2. Start Browser AI bridge (ChatGPT / Gemini)
 echo  3. Start local Ollama agent (computer control)
-echo  4. Exit
+echo  4. Start background companion (no UI window)
+echo  5. Exit
 echo.
-choice /c 1234 /n /m "Select 1-4: "
-if errorlevel 4 exit /b 0
+choice /c 12345 /n /m "Select 1-5: "
+if errorlevel 5 exit /b 0
+if errorlevel 4 goto companion
 if errorlevel 3 goto local_ollama
 if errorlevel 2 goto browser_bridge
 if errorlevel 1 goto install
