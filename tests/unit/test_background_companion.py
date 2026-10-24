@@ -3,6 +3,7 @@ import queue
 import sys
 import threading
 import types
+import wave
 
 import pytest
 
@@ -175,3 +176,35 @@ def test_tts_uses_bounded_fifo_queue(monkeypatch):
 
     assert [item[0] for item in speech_queue.queue] == ["First reply", "Second reply"]
     assert speech_queue.maxsize == 20
+
+
+
+def test_generated_wav_plays_through_sounddevice(monkeypatch, tmp_path):
+    wav_path = tmp_path / "voice.wav"
+    with wave.open(str(wav_path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16000)
+        wav_file.writeframes(b"\x00\x00\xe8\x03\x18\xfc\x00\x00")
+
+    observed = {}
+
+    def check_output_settings(**kwargs):
+        observed["settings"] = kwargs
+
+    def play(audio, samplerate, blocking):
+        observed["audio"] = audio
+        observed["samplerate"] = samplerate
+        observed["blocking"] = blocking
+
+    sounddevice = types.ModuleType("sounddevice")
+    sounddevice.check_output_settings = check_output_settings
+    sounddevice.play = play
+    monkeypatch.setitem(sys.modules, "sounddevice", sounddevice)
+
+    companion._play_wav_with_sounddevice(wav_path)
+
+    assert observed["samplerate"] == 16000
+    assert observed["blocking"] is True
+    assert observed["audio"].shape == (4, 1)
+    assert observed["settings"]["dtype"] == "float32"
