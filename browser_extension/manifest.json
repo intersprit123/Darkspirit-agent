@@ -5,7 +5,8 @@
   "description": "Connect ChatGPT or Gemini to the local Darkspirit bridge and read AI replies aloud with your browser's default voice.",
   "permissions": [
     "storage",
-    "tts"
+    "tts",
+    "tabs"
   ],
   "host_permissions": [
     "https://chatgpt.com/*",
