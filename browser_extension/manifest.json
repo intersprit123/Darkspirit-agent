@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Darkspirit Agent — Browser AI",
-  "version": "0.3.0",
-  "description": "Connect Gemini to the local Darkspirit voice companion, submit local microphone transcripts, and speak Gemini replies aloud.",
+  "version": "0.3.1",
+  "description": "Connect ChatGPT and Gemini to the local Darkspirit voice companion, submit microphone transcripts, and speak AI replies aloud.",
   "permissions": [
     "storage",
     "tts",
