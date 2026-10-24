@@ -24,6 +24,7 @@ CONFIG_PATH = APP_DIR / "companion.json"
 FACE_MODEL_PATH = APP_DIR / "face-model.yml"
 FACE_LABELS_PATH = APP_DIR / "face-labels.json"
 LOG_PATH = APP_DIR / "companion.log"
+_SPEECH_LOCK = threading.Lock()  # Prevent overlapping TTS playback.
 DEFAULT_CONFIG: dict[str, Any] = {
     "camera_enabled": False,
     "microphone_enabled": False,
@@ -95,40 +96,51 @@ def speak(text: str) -> None:
         return
 
     def synthesize_and_play() -> None:
-        try:
-            payload = {
-                "text": text[:500],
-                "reference_id": str(config.get("fish_audio_voice_id") or DEFAULT_CONFIG["fish_audio_voice_id"]),
-                "format": "wav",
-                "speed": float(config.get("fish_audio_speed", 1.0)),
-                "normalize": True,
-            }
-            request = urllib.request.Request(
-                "https://api.fish.audio/v1/tts",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                    "model": str(config.get("fish_audio_model") or "s2.1-pro-free"),
-                },
-                method="POST",
-            )
-            with urllib.request.urlopen(request, timeout=30) as response:
-                audio = response.read()
-            if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
-                raise ValueError("Fish Audio returned data that is not a WAV file.")
-            # winsound plays locally; delete the temporary file after playback.
-            with tempfile.NamedTemporaryFile(prefix="darkspirit_voice_", suffix=".wav", delete=False) as handle:
-                wav_path = Path(handle.name)
-                handle.write(audio)
+        # Serialize synthesis and playback so replies never overlap or play out of order.
+        with _SPEECH_LOCK:
+            wav_path: Path | None = None
             try:
+                speed = float(config.get("fish_audio_speed", 1.0))
+                if not 0.5 <= speed <= 2.0:
+                    logging.warning("Fish Audio speed must be between 0.5 and 2.0; using 1.0.")
+                    speed = 1.0
+                payload = {
+                    "text": text[:500],
+                    "reference_id": str(config.get("fish_audio_voice_id") or DEFAULT_CONFIG["fish_audio_voice_id"]),
+                    "format": "wav",
+                    "speed": speed,
+                    "normalize": True,
+                }
+                request = urllib.request.Request(
+                    "https://api.fish.audio/v1/tts",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "model": str(config.get("fish_audio_model") or "s2.1-pro-free"),
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    audio = response.read(20 * 1024 * 1024 + 1)
+                if len(audio) > 20 * 1024 * 1024:
+                    raise ValueError("Fish Audio response exceeded the 20 MiB safety limit.")
+                if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+                    raise ValueError("Fish Audio returned data that is not a WAV file.")
+                with tempfile.NamedTemporaryFile(prefix="darkspirit_voice_", suffix=".wav", delete=False) as handle:
+                    wav_path = Path(handle.name)
+                    handle.write(audio)
                 winsound.PlaySound(str(wav_path), winsound.SND_FILENAME)
+            except urllib.error.HTTPError as exc:
+                logging.error("Fish Audio TTS request failed with HTTP %s; check API key, quota, and voice ID.", exc.code)
+            except Exception:
+                logging.exception("Fish Audio speech generation or playback failed.")
             finally:
-                wav_path.unlink(missing_ok=True)
-        except urllib.error.HTTPError as exc:
-            logging.error("Fish Audio TTS request failed with HTTP %s; check API key, quota, and voice ID.", exc.code)
-        except Exception:
-            logging.exception("Fish Audio speech generation or playback failed.")
+                if wav_path is not None:
+                    try:
+                        wav_path.unlink(missing_ok=True)
+                    except OSError:
+                        logging.warning("Could not remove temporary speech audio file.")
 
     threading.Thread(target=synthesize_and_play, name="Darkspirit-FishAudio-TTS", daemon=True).start()
 
@@ -359,9 +371,11 @@ def run_background() -> None:
                                 if voice_thread is None or not voice_thread.is_alive():
                                     voice_stop_event.clear()
 
+                                    voice_config = config.copy()
+
                                     def voice_worker() -> None:
                                         try:
-                                            listen_for_speech(str(config.get("vosk_model_path", "")), voice_stop_event)
+                                            listen_for_speech(str(voice_config.get("vosk_model_path", "")), voice_stop_event)
                                         except Exception:
                                             logging.exception("Local voice input failed.")
                                             speak("My microphone setup needs attention. I'll keep checking for your face.")
