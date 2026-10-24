@@ -24,7 +24,9 @@ CONFIG_PATH = APP_DIR / "companion.json"
 FACE_MODEL_PATH = APP_DIR / "face-model.yml"
 FACE_LABELS_PATH = APP_DIR / "face-labels.json"
 LOG_PATH = APP_DIR / "companion.log"
-_SPEECH_LOCK = threading.Lock()  # Prevent overlapping TTS playback.
+_TTS_QUEUE: queue.Queue[tuple[str, dict[str, Any], str]] = queue.Queue(maxsize=20)
+_TTS_QUEUE_LOCK = threading.Lock()
+_TTS_WORKER: threading.Thread | None = None
 DEFAULT_CONFIG: dict[str, Any] = {
     "camera_enabled": False,
     "microphone_enabled": False,
@@ -82,13 +84,83 @@ def configure_logging() -> None:
     )
 
 
-def speak(text: str) -> None:
-    """Generate Verity-style speech through Fish Audio without blocking camera checks.
+def _synthesize_and_play(text: str, config: dict[str, Any], api_key: str) -> None:
+    """Generate one WAV with Fish Audio and play it locally."""
+    wav_path: Path | None = None
+    try:
+        speed = float(config.get("fish_audio_speed", 1.0))
+        if not 0.5 <= speed <= 2.0:
+            logging.warning("Fish Audio speed must be between 0.5 and 2.0; using 1.0.")
+            speed = 1.0
+        payload = {
+            "text": text[:500],
+            "reference_id": str(
+                config.get("fish_audio_voice_id") or DEFAULT_CONFIG["fish_audio_voice_id"]
+            ),
+            "format": "wav",
+            "speed": speed,
+            "normalize": True,
+        }
+        request = urllib.request.Request(
+            "https://api.fish.audio/v1/tts",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "model": str(config.get("fish_audio_model") or "s2.1-pro-free"),
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            audio = response.read(20 * 1024 * 1024 + 1)
+        if len(audio) > 20 * 1024 * 1024:
+            raise ValueError("Fish Audio response exceeded the 20 MiB safety limit.")
+        if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+            raise ValueError("Fish Audio returned data that is not a WAV file.")
+        with tempfile.NamedTemporaryFile(
+            prefix="darkspirit_voice_", suffix=".wav", delete=False
+        ) as handle:
+            wav_path = Path(handle.name)
+            handle.write(audio)
+        winsound.PlaySound(str(wav_path), winsound.SND_FILENAME)
+    except urllib.error.HTTPError as exc:
+        logging.error(
+            "Fish Audio TTS request failed with HTTP %s; check API key, quota, and voice ID.",
+            exc.code,
+        )
+    except Exception:
+        logging.exception("Fish Audio speech generation or playback failed.")
+    finally:
+        if wav_path is not None:
+            try:
+                wav_path.unlink(missing_ok=True)
+            except OSError:
+                logging.warning("Could not remove temporary speech audio file.")
 
-    Fish Audio credentials are supplied by the user in the local config. Speech is
-    synthesized on a worker thread and played from a temporary WAV file; Windows SAPI
-    is deliberately not used as a fallback.
+
+def _speech_worker() -> None:
+    """Play queued speech sequentially; never create one blocked thread per utterance."""
+    while True:
+        item = _TTS_QUEUE.get()
+        try:
+            text, config, api_key = item
+            _synthesize_and_play(text, config, api_key)
+        except Exception:
+            logging.exception("Unexpected failure in the Fish Audio queue worker.")
+        finally:
+            _TTS_QUEUE.task_done()
+
+
+def speak(text: str) -> None:
+    """Queue Verity-style speech without blocking camera or microphone work.
+
+    The text is sent to Fish Audio for synthesis; microphone recordings remain local.
+    Fish Audio credentials are supplied by the user in the local config. There is no
+    Windows SAPI fallback.
     """
+    global _TTS_WORKER
+    if not text or not text.strip():
+        return
     try:
         config = load_config()
     except Exception:
@@ -96,57 +168,23 @@ def speak(text: str) -> None:
         return
     api_key = str(config.get("fish_audio_api_key", "")).strip()
     if not api_key:
-        logging.warning("Fish Audio voice is not configured; set fish_audio_api_key in companion.json.")
+        logging.warning(
+            "Fish Audio voice is not configured; set fish_audio_api_key in companion.json."
+        )
         return
 
-    def synthesize_and_play() -> None:
-        # Serialize synthesis and playback so replies never overlap.
-        with _SPEECH_LOCK:
-            wav_path: Path | None = None
-            try:
-                speed = float(config.get("fish_audio_speed", 1.0))
-                if not 0.5 <= speed <= 2.0:
-                    logging.warning("Fish Audio speed must be between 0.5 and 2.0; using 1.0.")
-                    speed = 1.0
-                payload = {
-                    "text": text[:500],
-                    "reference_id": str(config.get("fish_audio_voice_id") or DEFAULT_CONFIG["fish_audio_voice_id"]),
-                    "format": "wav",
-                    "speed": speed,
-                    "normalize": True,
-                }
-                request = urllib.request.Request(
-                    "https://api.fish.audio/v1/tts",
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                        "model": str(config.get("fish_audio_model") or "s2.1-pro-free"),
-                    },
-                    method="POST",
-                )
-                with urllib.request.urlopen(request, timeout=30) as response:
-                    audio = response.read(20 * 1024 * 1024 + 1)
-                if len(audio) > 20 * 1024 * 1024:
-                    raise ValueError("Fish Audio response exceeded the 20 MiB safety limit.")
-                if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
-                    raise ValueError("Fish Audio returned data that is not a WAV file.")
-                with tempfile.NamedTemporaryFile(prefix="darkspirit_voice_", suffix=".wav", delete=False) as handle:
-                    wav_path = Path(handle.name)
-                    handle.write(audio)
-                winsound.PlaySound(str(wav_path), winsound.SND_FILENAME)
-            except urllib.error.HTTPError as exc:
-                logging.error("Fish Audio TTS request failed with HTTP %s; check API key, quota, and voice ID.", exc.code)
-            except Exception:
-                logging.exception("Fish Audio speech generation or playback failed.")
-            finally:
-                if wav_path is not None:
-                    try:
-                        wav_path.unlink(missing_ok=True)
-                    except OSError:
-                        logging.warning("Could not remove temporary speech audio file.")
+    try:
+        _TTS_QUEUE.put_nowait((text[:500], config.copy(), api_key))
+    except queue.Full:
+        logging.warning("Fish Audio speech queue is full; dropping a low-priority utterance.")
+        return
 
-    threading.Thread(target=synthesize_and_play, name="Darkspirit-FishAudio-TTS", daemon=True).start()
+    with _TTS_QUEUE_LOCK:
+        if _TTS_WORKER is None or not _TTS_WORKER.is_alive():
+            _TTS_WORKER = threading.Thread(
+                target=_speech_worker, name="Darkspirit-FishAudio-TTS", daemon=True
+            )
+            _TTS_WORKER.start()
 
 
 def enroll_face() -> None:
