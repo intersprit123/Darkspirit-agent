@@ -129,23 +129,49 @@ let voiceBridgeToken = null;
 let pendingVoiceText = null;
 let voicePollInFlight = false;
 
+async function ensureGeminiTab() {
+  const allTabs = await chrome.tabs.query({});
+  const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const isGeminiTab = function (candidate) {
+    return candidate.url && candidate.url.indexOf("https://gemini.google.com/") === 0;
+  };
+  let tab = activeTabs.find(isGeminiTab);
+  if (!tab) {
+    const matches = allTabs.filter(isGeminiTab);
+    matches.sort(function (a, b) {
+      return (b.lastAccessed || 0) - (a.lastAccessed || 0);
+    });
+    tab = matches[0];
+  }
+  if (!tab) {
+    tab = await chrome.tabs.create({ url: "https://gemini.google.com/app", active: true });
+  } else {
+    await chrome.tabs.update(tab.id, { active: true });
+  }
+  try {
+    if (typeof tab.windowId === "number") {
+      await chrome.windows.update(tab.windowId, { focused: true });
+    }
+  } catch (_) {
+    // Some managed browser contexts do not allow programmatic window focusing.
+  }
+  return tab;
+}
+
 async function deliverPendingVoice() {
   if (!pendingVoiceText) return false;
-  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const tab = tabs.find(function (candidate) {
-    return candidate.url && /^https:\/\/(chatgpt\.com|chat\.openai\.com|gemini\.google\.com)\//i.test(candidate.url);
-  });
-  if (!tab || typeof tab.id !== "number") return false;
-
+  const tab = await ensureGeminiTab();
   try {
     await chrome.tabs.sendMessage(tab.id, {
       type: "darkspiritVoiceSubmit",
       text: pendingVoiceText
     });
     pendingVoiceText = null;
+    await chrome.storage.session.remove("darkspiritPendingVoiceText");
     return true;
   } catch (_) {
-    // Keep the transcript queued locally and retry when the content script is ready.
+    // Gemini may still be loading or its content script may need to initialize.
+    // Keep the transcript and retry; do not discard the user's words.
     return false;
   }
 }
@@ -154,7 +180,12 @@ async function pollVoiceQueue() {
   if (voicePollInFlight) return;
   voicePollInFlight = true;
   try {
-    // Deliver an already-fetched transcript before asking the bridge for another.
+    if (!pendingVoiceText) {
+      const stored = await chrome.storage.session.get("darkspiritPendingVoiceText");
+      if (typeof stored.darkspiritPendingVoiceText === "string") {
+        pendingVoiceText = stored.darkspiritPendingVoiceText;
+      }
+    }
     if (pendingVoiceText) {
       await deliverPendingVoice();
       if (pendingVoiceText) return;
@@ -176,6 +207,7 @@ async function pollVoiceQueue() {
     const data = await response.json();
     if (typeof data.text === "string" && data.text.trim()) {
       pendingVoiceText = data.text.trim();
+      await chrome.storage.session.set({ darkspiritPendingVoiceText: pendingVoiceText });
       await deliverPendingVoice();
     }
   } catch (_) {
@@ -187,15 +219,15 @@ async function pollVoiceQueue() {
 
 function startVoiceQueuePolling() {
   if (voicePollTimer) clearInterval(voicePollTimer);
-  // Fast polling while the MV3 worker is awake; the alarm is a recovery path
-  // after the browser suspends and later wakes the service worker.
   pollVoiceQueue();
-  voicePollTimer = setInterval(pollVoiceQueue, 1000);
-  chrome.alarms.create("darkspirit-voice-queue", { periodInMinutes: 1 });
+  // Fast polling while Chrome keeps this worker awake. The periodic alarm is a
+  // recovery path if Manifest V3 suspends the service worker.
+  voicePollTimer = setInterval(pollVoiceQueue, 750);
+  chrome.alarms.create("darkspiritVoiceQueue", { periodInMinutes: 1 });
 }
 
 chrome.alarms.onAlarm.addListener(function (alarm) {
-  if (alarm && alarm.name === "darkspirit-voice-queue") pollVoiceQueue();
+  if (alarm && alarm.name === "darkspiritVoiceQueue") pollVoiceQueue();
 });
 chrome.runtime.onStartup.addListener(startVoiceQueuePolling);
 chrome.runtime.onInstalled.addListener(startVoiceQueuePolling);

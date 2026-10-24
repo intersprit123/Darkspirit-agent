@@ -18,10 +18,12 @@ echo  1. Install / update all project dependencies
 echo  2. Start Browser AI bridge (ChatGPT / Gemini)
 echo  3. Start local Ollama agent (computer control)
 echo  4. Start background companion (no UI window)
-echo  5. Exit
+echo  5. Start Gemini voice assistant (Shift+S)
+echo  6. Exit
 echo.
-choice /c 12345 /n /m "Select 1-5: "
-if errorlevel 5 exit /b 0
+choice /c 123456 /n /m "Select 1-6: "
+if errorlevel 6 exit /b 0
+if errorlevel 5 goto gemini_voice
 if errorlevel 4 goto companion
 if errorlevel 3 goto local_ollama
 if errorlevel 2 goto browser_bridge
@@ -72,6 +74,10 @@ set "RC=%ERRORLEVEL%"
 echo.
 echo Ollama agent exited with code %RC%.
 pause
+goto menu
+
+:gemini_voice
+call "%~dp0start_gemini_voice.bat"
 goto menu
 
 :companion

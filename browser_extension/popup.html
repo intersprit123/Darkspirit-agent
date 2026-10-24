@@ -14,10 +14,10 @@
 </head>
 <body>
   <h1>Darkspirit Agent</h1>
-  <p>Connects ChatGPT/Gemini to Darkspirit Agent, submits voice transcripts from the local companion, and can speak AI replies aloud. No speech API key is needed.</p>
+  <p>Connects the local Darkspirit companion to Gemini. Shift+S starts voice capture; Gemini replies are spoken using Chrome's default voice. Speech recognition runs locally.</p>
   <button id="test">Test bridge</button> <button id="test-voice">Test default voice</button> <button id="stop-voice">Stop voice</button>
   <div id="status" role="status">Ready to test the local bridge.</div>
-  <p class="small">For voice input, start the local bridge (start.bat option 2), open and focus a ChatGPT/Gemini tab, then run <code>uv run python -m darkspirit_companion --voice-browser</code>. Voice submission permission is separate from computer-action approval.</p>
+  <p class="small">Run <code>start_gemini_voice.bat</code> from the project folder. Press Shift+S to start listening, pause five seconds to submit, or press Shift+S again to submit early. Shift+Esc exits the background listener. Voice does not enable computer actions.</p>
   <script src="popup.js"></script>
 </body>
 </html>

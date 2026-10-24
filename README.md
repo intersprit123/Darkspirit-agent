@@ -26,6 +26,17 @@
 
 Give it a task in plain English. It handles the rest.
 
+## Darkspirit Gemini Voice (Windows)
+
+The project also includes a local, keyboard-driven voice companion for Gemini. Run `start_gemini_voice.bat` (or choose **5. Start Gemini voice assistant** from `start.bat`), approve the session prompt, and keep Chrome open.
+
+- Press **Shift+S** to start or stop microphone capture. Pressing it again submits early.
+- If you pause for five seconds after speaking, the recognized text is submitted automatically.
+- Gemini's reply is read aloud with Chrome's default voice.
+- Press **Shift+Esc** to stop the background listener.
+
+Speech is transcribed locally with Vosk. The recognized text is sent to Gemini. This shortcut does not enable computer-control actions; those remain a separate explicit choice in the Browser AI extension. Install/reload the unpacked extension from `browser_extension/` at `chrome://extensions` if it is not already enabled. See [`docs/gemini-voice.md`](docs/gemini-voice.md) for setup and troubleshooting.
+
 ## What It Can Do
 
 - Open, switch between, and resize application windows
