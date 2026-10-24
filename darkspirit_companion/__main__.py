@@ -271,11 +271,16 @@ def run_background() -> None:
                             listen_for_speech(str(config.get("vosk_model_path", "")))
                         except Exception:
                             logging.exception("Local voice input failed.")
-                            speak("I couldn't start voice input. Please check my local settings.")
+                            # Do not repeatedly reopen the microphone or replay the greeting
+                            # every time voice setup fails. Keep this session in camera-only mode.
+                            config["microphone_enabled"] = False
+                            logging.warning("Voice input disabled for this run after startup failure.")
+                            speak("My microphone setup needs attention. I'll stay available without listening.")
                         camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
                         if not camera.isOpened():
+                            logging.error("Camera could not be reopened after voice session.")
                             break
-            elif time.monotonic() - absent_since > 12:
+            elif time.monotonic() - absent_since > 30:
                 greeted = False
             time.sleep(0.08)
     except KeyboardInterrupt:
