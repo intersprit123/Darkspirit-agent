@@ -131,6 +131,19 @@
   });
 
   chrome.runtime.onMessage.addListener(function (message) {
+    if (message && message.type === "darkspiritVoiceSubmit" && typeof message.text === "string") {
+      if (document.visibilityState !== "visible") {
+        setStatus("Voice transcript received, but this tab is not visible. Focus this ChatGPT/Gemini tab and speak again.");
+        return false;
+      }
+      sendChatMessage(message.text).then(function () {
+        setStatus("Voice task submitted: " + message.text);
+      }).catch(function (error) {
+        taskInput.value = message.text;
+        setStatus("Voice transcript ready; please submit manually: " + (error.message || String(error)));
+      });
+      return false;
+    }
     if (!message || message.type !== "ttsStatus" || message.target !== "tab") return false;
     if (message.status === "error") setStatus("Browser voice failed: " + (message.error || "unknown speech error"));
     else if (message.status === "started") setStatus("Speaking with the browser's default voice…");
