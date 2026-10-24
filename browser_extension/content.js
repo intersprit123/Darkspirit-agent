@@ -18,7 +18,9 @@
     '<label><input id="ds-share" type="checkbox"> I understand desktop information is sent to this AI website.</label>' +
     '<label><input id="ds-actions" type="checkbox"> Enable computer actions for this task.</label>' +
     '<label><input id="ds-approve-each" type="checkbox" checked> Ask me before each app, mouse, or keyboard action.</label>' +
+    '<label><input id="ds-speak-replies" type="checkbox" checked> Speak new AI replies aloud using the browser default voice.</label>' +
     '<div class="ds-buttons"><button id="ds-start">Start task</button><button id="ds-stop" class="ds-danger" disabled>Stop</button><button id="ds-test" class="ds-secondary">Test bridge</button></div>' +
+    '<div class="ds-buttons"><button id="ds-test-voice" class="ds-secondary">Test voice</button><button id="ds-stop-voice" class="ds-secondary">Stop voice</button></div>' +
     '<div id="ds-approval" class="ds-hidden"><p id="ds-approval-title"></p><pre id="ds-approval-preview" class="ds-preview"></pre><div class="ds-buttons"><button id="ds-approve">Approve action</button><button id="ds-deny" class="ds-danger">Deny</button></div></div>' +
     '<div id="ds-status" class="ds-status" role="status">Open the extension icon and save the token printed by start.bat.</div>' +
     '<div id="ds-final" class="ds-note"></div>' +
@@ -30,6 +32,9 @@
   const shareConsent = el("ds-share");
   const actionsToggle = el("ds-actions");
   const approvalToggle = el("ds-approve-each");
+  const speakRepliesToggle = el("ds-speak-replies");
+  const testVoiceButton = el("ds-test-voice");
+  const stopVoiceButton = el("ds-stop-voice");
   const startButton = el("ds-start");
   const stopButton = el("ds-stop");
   const testButton = el("ds-test");
@@ -43,6 +48,44 @@
 
   function setStatus(text) { statusBox.textContent = text; }
   function delay(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+
+  chrome.storage.local.get({ speakReplies: true }, function (settings) {
+    speakRepliesToggle.checked = settings.speakReplies !== false;
+  });
+  speakRepliesToggle.addEventListener("change", function () {
+    chrome.storage.local.set({ speakReplies: speakRepliesToggle.checked });
+    if (!speakRepliesToggle.checked) setStatus("Automatic speech is off. Use Test voice to check the default voice.");
+  });
+
+  function sendVoiceMessage(message, announceAccepted) {
+    chrome.runtime.sendMessage(message, function (response) {
+      const runtimeError = chrome.runtime.lastError;
+      if (runtimeError) {
+        setStatus("Browser voice error: " + runtimeError.message);
+        return;
+      }
+      if (!response || !response.ok) {
+        setStatus("Browser voice error: " + (response && response.error ? response.error : "No response from the speech service."));
+        return;
+      }
+      if (announceAccepted) setStatus(response.message || "Speech request sent to the browser default voice.");
+    });
+  }
+
+  testVoiceButton.addEventListener("click", function () {
+    sendVoiceMessage({ type: "ttsTest" }, true);
+  });
+  stopVoiceButton.addEventListener("click", function () {
+    sendVoiceMessage({ type: "ttsStop" }, true);
+  });
+
+  chrome.runtime.onMessage.addListener(function (message) {
+    if (!message || message.type !== "ttsStatus") return false;
+    if (message.status === "error") setStatus("Browser voice failed: " + (message.error || "unknown speech error"));
+    else if (message.status === "started") setStatus("Speaking with the browser's default voice…");
+    else if (message.status === "finished") setStatus("Voice playback finished.");
+    return false;
+  });
 
   async function bridgeRequest(payload) {
     const response = await chrome.runtime.sendMessage({ type: "bridgeRequest", payload: payload });
@@ -155,6 +198,95 @@
       });
     });
   }
+
+  function latestAssistantNode() {
+    const selector = isChatGPT ? '[data-message-author-role="assistant"]' : "model-response";
+    let nodes = Array.from(document.querySelectorAll(selector));
+    if (!nodes.length && isGemini) {
+      nodes = Array.from(document.querySelectorAll("message-content, .model-response-text"));
+    }
+    return nodes.length ? nodes[nodes.length - 1] : null;
+  }
+
+  function speakableAssistantText(text) {
+    const command = extractCommand(text);
+    if (command) {
+      // Tool-call JSON is protocol data, not a spoken answer.
+      if (command.command === "done_tool") {
+        return typeof command.params.answer === "string" ? command.params.answer.slice(0, 6000) : "";
+      }
+      return "";
+    }
+    return String(text)
+      .replace(/```[\s\S]*?```/g, " Code block omitted. ")
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+      .replace(/^\s*[-*+]\s+/gm, "")
+      .replace(/^\s*\d+\.\s+/gm, "")
+      .replace(/[`*_~]/g, "")
+      .replace(/https?:\/\/\S+/g, "link")
+      .replace(/\n{2,}/g, ". ")
+      .trim()
+      .slice(0, 6000);
+  }
+
+  let trackedAssistantNode = latestAssistantNode();
+  let trackedAssistantText = trackedAssistantNode
+    ? (trackedAssistantNode.innerText || trackedAssistantNode.textContent || "").trim()
+    : "";
+  let lastSpokenAssistantNode = null;
+  let pendingSpeechTimer = null;
+  let mutationDebounceTimer = null;
+
+  function inspectLatestAssistantText() {
+    const node = latestAssistantNode();
+    if (!node) return;
+    const text = (node.innerText || node.textContent || "").trim();
+
+    if (node !== trackedAssistantNode) {
+      trackedAssistantNode = node;
+      trackedAssistantText = "";
+    }
+    if (!text || text === trackedAssistantText) return;
+
+    trackedAssistantText = text;
+    if (pendingSpeechTimer) clearTimeout(pendingSpeechTimer);
+    if (!speakRepliesToggle.checked) return;
+
+    function speakWhenStable() {
+      if (!speakRepliesToggle.checked || lastSpokenAssistantNode === node) return;
+      if (latestAssistantNode() !== node) return;
+
+      const currentText = (node.innerText || node.textContent || "").trim();
+      if (!currentText) return;
+      if (currentText !== trackedAssistantText) {
+        inspectLatestAssistantText();
+        return;
+      }
+      if (isGenerating()) {
+        pendingSpeechTimer = setTimeout(speakWhenStable, 700);
+        return;
+      }
+
+      const speechText = speakableAssistantText(currentText);
+      if (!speechText) return;
+      lastSpokenAssistantNode = node;
+      sendVoiceMessage({ type: "ttsSpeak", text: speechText, lang: "en-US" }, false);
+    }
+
+    pendingSpeechTimer = setTimeout(speakWhenStable, 1300);
+  }
+
+  const assistantSpeechObserver = new MutationObserver(function () {
+    if (mutationDebounceTimer) clearTimeout(mutationDebounceTimer);
+    mutationDebounceTimer = setTimeout(inspectLatestAssistantText, 150);
+  });
+  assistantSpeechObserver.observe(document.body, {
+    childList: true,
+    characterData: true,
+    subtree: true
+  });
 
   function extractCommand(text) {
     const tryParse = function (candidate) {
