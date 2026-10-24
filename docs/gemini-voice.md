@@ -10,7 +10,7 @@ and opens Gemini in Chrome.
 
 - **Shift+S**: start microphone capture.
 - **Shift+S while listening**: stop capture and submit the recognized text immediately.
-- **Five seconds without new recognized words**: automatically submit and close the microphone.
+- **Two seconds without new recognized words**: automatically close the microphone and submit the transcript.
 - **Shift+Esc**: stop capture and exit the companion.
 
 The microphone opens only after consent and an explicit Shift+S press. Vosk performs speech

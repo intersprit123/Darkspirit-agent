@@ -3,7 +3,8 @@
 Microphone capture starts only after the user approves the session and presses Shift+S.
 Speech is transcribed locally with Vosk and only the resulting text is sent to Gemini
 through the authenticated localhost Darkspirit bridge. Shift+S while recording submits
-early; five seconds without new recognized speech submits automatically. Shift+Esc exits.
+early; two seconds without new recognized speech submits automatically after closing
+the microphone. Shift+Esc exits.
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ GEMINI_URL = "https://gemini.google.com/app"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_WS_PORT = 17613
 BRIDGE_HTTP_PORT = 17614
-SILENCE_SECONDS = 5.0
+SILENCE_SECONDS = 2.0
 SAMPLE_RATE = 16000
 VK_SHIFT = 0x10
 VK_ESCAPE = 0x1B
@@ -195,7 +196,7 @@ def run() -> None:
     consent = show_message(
         "Start Darkspirit Gemini Voice in the background?\n\n"
         "• Shift+S starts microphone listening.\n"
-        "• Five seconds after your last recognized words, your transcript is sent to Gemini.\n"
+        "• Two seconds after your last recognized words, your microphone closes and the transcript is sent to Gemini.\n"
         "• Press Shift+S again to submit early and stop the microphone.\n"
         "• Gemini's reply is spoken by the Darkspirit browser extension.\n"
         "• Shift+Esc exits this background companion.\n\n"

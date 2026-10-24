@@ -31,7 +31,7 @@ Give it a task in plain English. It handles the rest.
 The project also includes a local, keyboard-driven voice companion for Gemini. Run `start_gemini_voice.bat` (or choose **5. Start Gemini voice assistant** from `start.bat`), approve the session prompt, and keep Chrome open.
 
 - Press **Shift+S** to start or stop microphone capture. Pressing it again submits early.
-- If you pause for five seconds after speaking, the recognized text is submitted automatically.
+- If you pause for two seconds after speaking, the microphone closes and the recognized text is submitted automatically.
 - Gemini's reply is read aloud with Chrome's default voice.
 - Press **Shift+Esc** to stop the background listener.
 
