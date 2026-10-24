@@ -567,11 +567,114 @@ def run_background() -> None:
         logging.info("Background companion stopped.")
 
 
+
+def run_browser_voice() -> None:
+    """Run a foreground, session-consented local Vosk-to-browser voice bridge."""
+    configure_logging()
+    print("\nDarkspirit Agent — voice to ChatGPT/Gemini")
+    print("This session uses your microphone for local Vosk transcription.")
+    print("Recognized text is sent to the active ChatGPT/Gemini tab after 5 seconds of silence.")
+    print("Voice does NOT enable PC-control actions. Press Ctrl+C or say 'stop listening' to stop.")
+    approval = input("Allow microphone and voice submission for this session? [y/N] ").strip().lower()
+    if approval != "y":
+        print("Voice session not started; microphone remains off.")
+        return
+
+    try:
+        import sounddevice as sd
+        from vosk import KaldiRecognizer, Model
+    except ImportError as exc:
+        raise RuntimeError("Voice extras are missing. Run: uv sync --extra companion") from exc
+
+    config = load_config()
+    model_path = str(config.get("vosk_model_path") or "").strip()
+    if not model_path or not Path(model_path).is_dir():
+        raise RuntimeError("Set vosk_model_path in companion.json to a downloaded Vosk model folder.")
+    token_path = APP_DIR / "voice-bridge.token"
+    if not token_path.exists():
+        raise RuntimeError("Start the browser bridge first (start.bat → option 2), then retry.")
+    token = token_path.read_text(encoding="utf-8").strip()
+    if not token:
+        raise RuntimeError("Voice bridge token is empty. Restart the browser bridge.")
+
+    recognizer = KaldiRecognizer(Model(model_path), 16000)
+    audio_queue: queue.Queue[bytes] = queue.Queue(maxsize=40)
+    segments: list[str] = []
+    last_speech_at: float | None = None
+    last_submitted = ""
+    stop_phrase = {"stop listening", "stop voice", "darkspirit stop"}
+    def on_audio(indata, frames, timing, status):
+        del frames, timing
+        if status:
+            logging.warning("Audio input status: %s", status)
+        try:
+            audio_queue.put_nowait(bytes(indata))
+        except queue.Full:
+            pass
+
+    def submit_transcript(text: str) -> bool:
+        request = urllib.request.Request(
+            "http://127.0.0.1:17614/submit",
+            data=json.dumps({"text": text}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "X-Darkspirit-Token": token},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=3) as response:
+                return response.status == 200
+        except Exception as exc:
+            logging.warning("Voice bridge submission failed: %s", type(exc).__name__)
+            print("Could not send transcript. Is the browser bridge still running?")
+            return False
+
+    print("Voice session active. Keep a ChatGPT or Gemini tab open in the browser.")
+    try:
+        with sd.RawInputStream(samplerate=16000, blocksize=4000, dtype="int16", channels=1, callback=on_audio):
+            while True:
+                now = time.monotonic()
+                try:
+                    chunk = audio_queue.get(timeout=0.25)
+                except queue.Empty:
+                    chunk = None
+                if chunk is not None:
+                    if recognizer.AcceptWaveform(chunk):
+                        result_text = json.loads(recognizer.Result()).get("text", "").strip()
+                        if result_text:
+                            normalized = " ".join(result_text.lower().split())
+                            if normalized in stop_phrase:
+                                print("Voice session stopped by voice command.")
+                                break
+                            segments.append(result_text)
+                            last_speech_at = time.monotonic()
+                            print("Heard segment:", result_text)
+                    else:
+                        partial = json.loads(recognizer.PartialResult()).get("partial", "").strip()
+                        if partial:
+                            last_speech_at = time.monotonic()
+                if segments and last_speech_at is not None and now - last_speech_at >= 5.0:
+                    transcript = " ".join(segments).strip()
+                    segments.clear()
+                    last_speech_at = None
+                    if transcript and transcript != last_submitted:
+                        if submit_transcript(transcript):
+                            last_submitted = transcript
+                            print("Submitted to browser:", transcript)
+                        else:
+                            print("Transcript retained in this session only; please retry after reconnecting.")
+                            segments.append(transcript)
+                            last_speech_at = time.monotonic()
+    except KeyboardInterrupt:
+        print("\nVoice session stopped.")
+    finally:
+        logging.info("Browser voice session ended; microphone released.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Darkspirit background companion")
     parser.add_argument("--setup", action="store_true", help="Open the explicit first-time setup")
     parser.add_argument("--enroll-face", action="store_true", help="Enroll or replace the local face model")
     parser.add_argument("--background", action="store_true", help="Run without opening a UI window")
+    parser.add_argument("--voice-browser", action="store_true", help="Send local microphone transcripts to active ChatGPT/Gemini tab")
     args = parser.parse_args()
     if args.setup:
         configure()
@@ -579,6 +682,8 @@ def main() -> None:
         enroll_face()
     elif args.background:
         run_background()
+    elif args.voice_browser:
+        run_browser_voice()
     else:
         parser.print_help()
 
