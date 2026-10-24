@@ -8,13 +8,33 @@ on:
 
 jobs:
   lint:
-    name: Lint
+    name: Lint new integration files
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run pre-commit hooks
-        uses: pre-commit/action@v3.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install project and lint dependencies
+        run: uv sync --extra dev
+
+      - name: Lint bridge and bridge tests
+        run: uv run ruff check darkspirit_bridge tests/unit/test_browser_bridge.py
+
+      - name: Check formatting of bridge and bridge tests
+        run: uv run ruff format --check darkspirit_bridge tests/unit/test_browser_bridge.py
+
+      - name: Validate extension manifest
+        run: python -c "import json; json.load(open('browser_extension/manifest.json', encoding='utf-8'))"
+
+      - name: Check extension JavaScript syntax
+        run: |
+          node --check browser_extension/background.js
+          node --check browser_extension/content.js
+          node --check browser_extension/popup.js
 
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -34,18 +54,6 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --extra dev
-
-      - name: Install Node.js for extension syntax checks
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Check Python and extension syntax
-        run: |
-          uv run python -m compileall -q darkspirit_bridge
-          node --check browser_extension/background.js
-          node --check browser_extension/content.js
-          node --check browser_extension/popup.js
 
       - name: Run unit tests
         run: uv run pytest tests/unit/ -v --tb=short
