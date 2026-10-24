@@ -37,6 +37,14 @@ This does not install a browser, alter browser profiles, download an AI model, o
 
 Never commit the pairing token or share it in screenshots, chat messages, or issues. If the token is exposed, delete the local token file at %USERPROFILE%\.darkspirit-agent\bridge.token and restart the bridge to generate a new one, then save the new token in the extension popup.
 
+## Microphone and continuous face recognition
+
+- The Python companion keeps the webcam open for continuous face detection while camera consent and face enrollment remain enabled. This avoids repeatedly opening and closing the camera, so the hardware indicator may remain on while Darkspirit is running.
+- The enrolled face is recognized locally. Other visible faces can be detected by the camera, but are not identified as named people unless separately enrolled. This companion does not upload face images.
+- The browser panel now includes **Start microphone**. Click it to start speech recognition; recognized words are appended to the task field. Support varies by browser, and some browser speech-recognition implementations may use an online service.
+- An extension cannot silently grant Chrome/Edge camera or microphone permissions. To remember a permission, open ChatGPT or Gemini, select the site-controls icon beside the address bar, open **Site settings**, and set **Microphone** to **Allow**; reload the tab. For the Python companion, grant access under **Windows Settings → Privacy & security → Camera / Microphone**. Browser and Windows permissions remain under their control.
+- Gemini reply detection uses best-effort page selectors and announces stable new replies with browser text-to-speech when **Speak new AI replies aloud** is enabled. Reload the Gemini tab after updating the extension.
+
 ## Default voice and speech testing
 
 On ChatGPT or Gemini pages, the extension can read new assistant replies aloud using the browser's built-in `chrome.tts` extension API. On Windows, Chromium's extension TTS uses operating-system speech synthesis by default and chooses an appropriate voice for the requested language. The extension requests English (United States) and does not select a custom voice, call Fish Audio, or need a speech API key. The actual voice therefore depends on the default voice installed and selected on Windows/browser.
