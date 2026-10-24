@@ -3,14 +3,7 @@ const REQUEST_TIMEOUT_MS = 60000;
 
 function requestBridge(payload) {
   return new Promise(function (resolve, reject) {
-    chrome.storage.local.get(["bridgeToken"], function (storage) {
-      const token = (storage && storage.bridgeToken || "").trim();
-      if (!token) {
-        reject(new Error("No pairing token saved. Open the extension popup and paste the token shown by start.bat."));
-        return;
-      }
-
-      let socket;
+    let socket;
       let settled = false;
       let sentRequest = false;
       const requestId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random());
@@ -35,7 +28,7 @@ function requestBridge(payload) {
       }
 
       socket.addEventListener("open", function () {
-        socket.send(JSON.stringify({ type: "authenticate", token: token }));
+        socket.send(JSON.stringify({ type: "authenticate" }));
       });
 
       socket.addEventListener("message", function (event) {
@@ -60,10 +53,9 @@ function requestBridge(payload) {
       });
       socket.addEventListener("close", function (event) {
         if (!settled) {
-          finish(false, new Error("Bridge connection closed before replying (code " + event.code + "). Check the pairing token and bridge log."));
+          finish(false, new Error("Bridge connection closed before replying (code " + event.code + "). Check that the local bridge is running."));
         }
       });
-    });
   });
 }
 
