@@ -45,7 +45,7 @@ if errorlevel 1 (
 )
 
 echo [1/3] Synchronizing dependencies, tests, face recognition, and offline voice packages...
-"%UV_EXE%" sync --extra dev
+"%UV_EXE%" sync --extra dev --extra companion
 if errorlevel 1 (
   echo [ERROR] Dependency synchronization failed.
   pause
