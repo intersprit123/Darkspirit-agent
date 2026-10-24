@@ -123,6 +123,45 @@ function speakWithBrowserVoice(text, sender, sendResponse, enqueue) {
   return true;
 }
 
+
+let voicePollTimer = null;
+let voiceBridgeToken = null;
+async function pollVoiceQueue() {
+  try {
+    if (!voiceBridgeToken) {
+      const tokenResponse = await fetch("http://127.0.0.1:17614/token", { cache: "no-store" });
+      if (!tokenResponse.ok) throw new Error("Voice bridge is not running");
+      const tokenData = await tokenResponse.json();
+      voiceBridgeToken = tokenData.token;
+    }
+    const response = await fetch("http://127.0.0.1:17614/next", {
+      headers: { "X-Darkspirit-Token": voiceBridgeToken },
+      cache: "no-store"
+    });
+    if (!response.ok) throw new Error("Voice queue request failed");
+    const data = await response.json();
+    if (data.text) {
+      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const tab = tabs.find(function (candidate) {
+        return candidate.url && /^https:\/\/(chatgpt\.com|chat\.openai\.com|gemini\.google\.com)\//i.test(candidate.url);
+      });
+      if (tab && tab.id) {
+        await chrome.tabs.sendMessage(tab.id, { type: "darkspiritVoiceSubmit", text: data.text });
+      }
+    }
+  } catch (error) {
+    voiceBridgeToken = null;
+  }
+}
+function startVoiceQueuePolling() {
+  if (voicePollTimer) return;
+  pollVoiceQueue();
+  voicePollTimer = setInterval(pollVoiceQueue, 500);
+}
+chrome.runtime.onStartup.addListener(startVoiceQueuePolling);
+chrome.runtime.onInstalled.addListener(startVoiceQueuePolling);
+startVoiceQueuePolling();
+
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
   if (!message || typeof message.type !== "string") return false;
 
