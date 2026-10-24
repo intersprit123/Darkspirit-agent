@@ -354,3 +354,8 @@ This repository adds an optional browser-based path for ChatGPT and Gemini. It u
 The integration is experimental and requires manual pairing with a private token printed by the local bridge. Desktop information is sent to the AI website only after you confirm the privacy checkbox. Computer actions are disabled unless you enable them, and the extension asks for approval before each action by default. Shell, arbitrary-code, and direct file-management tools are not exposed.
 
 See [docs/browser-ai.md](docs/browser-ai.md) for complete setup, troubleshooting, privacy, and safety information. See [docs/credits.md](docs/credits.md) for third-party references.
+
+
+## Background companion prototype
+
+An opt-in background-first Windows companion prototype is available in `darkspirit_companion`. It supports local face enrollment and a local greeting, with optional offline speech capture. Camera and microphone are disabled by default; see [docs/background-companion.md](docs/background-companion.md) for setup and important limitations. The browser AI bridge remains separate and unchanged.
