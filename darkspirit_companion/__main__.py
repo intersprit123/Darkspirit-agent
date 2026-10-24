@@ -204,13 +204,40 @@ def listen_for_speech(model_path: str) -> None:
             if recognizer.AcceptWaveform(chunk):
                 transcript = json_module.loads(recognizer.Result()).get("text", "").strip()
                 if transcript:
-                    logging.info("Local speech transcript received.")
-                    # Do not write transcripts to disk. This MVP only confirms capture;
-                    # the conversational brain/command router is a separate integration step.
-                    speak(f"I heard you say: {transcript}. My conversation connection is not configured yet.")
-                    if transcript.lower() in {"stop listening", "goodbye darkspirit", "go to sleep"}:
+                    # Keep transcripts out of logs. Only explicitly allowlisted local
+                    # actions are executed; never pass speech to a shell or arbitrary code.
+                    command = " ".join(
+                        transcript.lower().strip().replace(".", "").replace(",", "").split()
+                    )
+                    if command in {"stop listening", "goodbye darkspirit", "go to sleep"}:
                         speak("Okay. I'll wait until I recognize you again.")
                         return
+
+                    if command in {
+                        "open calculator",
+                        "launch calculator",
+                        "start calculator",
+                        "calculator",
+                    }:
+                        try:
+                            import subprocess
+                            subprocess.Popen(
+                                ["calc.exe"],
+                                shell=False,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                            )
+                            logging.info("Allowlisted action executed: open calculator.")
+                            speak("Opening Calculator.")
+                        except OSError:
+                            logging.exception("Could not open Calculator.")
+                            speak("Sorry, I couldn't open Calculator.")
+                        continue
+
+                    logging.info("Local speech transcript received; no allowlisted action matched.")
+                    speak(
+                        f"I heard you say: {transcript}. "
+                        "I can open Calculator so far, but my AI conversation connection isn't configured yet."
+                    )
 
 
 def run_background() -> None:
