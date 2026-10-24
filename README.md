@@ -343,3 +343,14 @@ Made with ❤️ by [Jeomon George](https://github.com/Jeomon)
   url          = {https://github.com/CursorTouch/Windows-Use}
 }
 ```
+
+
+---
+
+## Darkspirit Agent Browser AI (experimental)
+
+This repository adds an optional browser-based path for ChatGPT and Gemini. It uses your existing signed-in AI website session and does not require an AI API key. Install dependencies with **install.bat**, run **start.bat** and select option 2, then load the **browser_extension** folder as an unpacked Edge/Chrome extension.
+
+The integration is experimental and requires manual pairing with a private token printed by the local bridge. Desktop information is sent to the AI website only after you confirm the privacy checkbox. Computer actions are disabled unless you enable them, and the extension asks for approval before each action by default. Shell, arbitrary-code, and direct file-management tools are not exposed.
+
+See [docs/browser-ai.md](docs/browser-ai.md) for complete setup, troubleshooting, privacy, and safety information. See [docs/credits.md](docs/credits.md) for third-party references.
