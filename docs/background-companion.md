@@ -5,9 +5,9 @@ This is an opt-in prototype for a quiet Windows companion. It does not replace t
 ## Current scope
 
 - No startup window when launched with pythonw.
-- Local Windows SAPI greeting after an enrolled face is recognized.
+- Verity-style Fish Audio text-to-speech after an enrolled face is recognized; it requires your own authorized Fish Audio API key.
 - Optional local face enrollment with OpenCV LBPH; the model stays in %LOCALAPPDATA%\DarkspiritAgent.
-- Optional offline speech capture using Vosk and sounddevice after the face greeting.
+- Optional offline speech recognition using Vosk and sounddevice after the face greeting. Microphone audio is processed locally and is not sent to Fish Audio.
 - Camera and microphone settings default to OFF.
 - Config and operational logs stay in %LOCALAPPDATA%\DarkspiritAgent.
 - A startup shortcut is installed only if the user explicitly runs install_companion_startup.bat; remove it with remove_companion_startup.bat.
@@ -29,4 +29,4 @@ Face matching uses a simple local OpenCV LBPH model, which can make false matche
 
 No administrator privileges are requested by this prototype. When an operation needs elevation, the eventual implementation must launch a specific trusted action and rely on Windows UAC; it must not silently elevate the whole agent. The prototype does not request UAC.
 
-Use this prototype only on your own PC with people who consent to being recorded or recognized. Check Windows Settings > Privacy & security > Camera / Microphone to manage OS permissions. Logs do not intentionally contain raw audio, transcripts, or camera frames.
+Use this prototype only on your own PC with people who consent to being recorded or recognized. Check Windows Settings > Privacy & security > Camera / Microphone to manage OS permissions. Logs do not intentionally contain raw audio, transcripts, or camera frames. When Fish Audio TTS is configured, the text Darkspirit speaks is sent to Fish Audio to generate the reply audio; only generated speech audio is downloaded for local playback. Keep the API key in the local config and never share it.
