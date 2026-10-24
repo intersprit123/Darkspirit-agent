@@ -59,8 +59,92 @@ function requestBridge(payload) {
   });
 }
 
+function sendVoiceStatus(sender, status, error) {
+  if (!sender || !sender.tab || typeof sender.tab.id !== "number") return;
+  chrome.tabs.sendMessage(sender.tab.id, {
+    type: "ttsStatus",
+    status: status,
+    error: error || ""
+  }, function () {
+    void chrome.runtime.lastError;
+  });
+}
+
+function speakWithBrowserVoice(text, sender, sendResponse, enqueue) {
+  if (!chrome.tts || typeof chrome.tts.speak !== "function") {
+    sendResponse({ ok: false, error: "This browser does not expose the extension TTS API. Use current Edge or Chrome on desktop." });
+    return false;
+  }
+  const utterance = String(text || "").trim().slice(0, 6000);
+  if (!utterance) {
+    sendResponse({ ok: false, error: "There is no text to speak." });
+    return false;
+  }
+
+  try {
+    chrome.tts.speak(utterance, {
+      lang: "en-US",
+      rate: 1.0,
+      pitch: 1.0,
+      enqueue: Boolean(enqueue),
+      onEvent: function (event) {
+        if (!event) return;
+        if (event.type === "start") sendVoiceStatus(sender, "started");
+        else if (event.type === "end") sendVoiceStatus(sender, "finished");
+        else if (event.type === "error") {
+          const detail = event.errorMessage || "The browser speech engine could not speak this text.";
+          console.warn("Darkspirit browser TTS error:", detail);
+          sendVoiceStatus(sender, "error", detail);
+        }
+      }
+    }, function () {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        sendResponse({ ok: false, error: error.message || "The browser speech request failed." });
+      } else {
+        sendResponse({ ok: true, message: "Speech passed to the browser's default voice." });
+      }
+    });
+  } catch (error) {
+    sendResponse({
+      ok: false,
+      error: error && error.message ? error.message : String(error)
+    });
+  }
+  return true;
+}
+
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
-  if (!message || message.type !== "bridgeRequest") return false;
+  if (!message || typeof message.type !== "string") return false;
+
+  if (message.type === "ttsSpeak") {
+    return speakWithBrowserVoice(message.text, sender, sendResponse, true);
+  }
+
+  if (message.type === "ttsTest") {
+    return speakWithBrowserVoice(
+      "Hello! This is Darkspirit using your browser's default voice.",
+      sender,
+      sendResponse,
+      false
+    );
+  }
+
+  if (message.type === "ttsStop") {
+    try {
+      if (chrome.tts && typeof chrome.tts.stop === "function") {
+        chrome.tts.stop();
+        sendResponse({ ok: true });
+      } else {
+        sendResponse({ ok: false, error: "The browser speech API is unavailable." });
+      }
+    } catch (error) {
+      sendResponse({ ok: false, error: error && error.message ? error.message : String(error) });
+    }
+    return false;
+  }
+
+  if (message.type !== "bridgeRequest") return false;
   requestBridge(message.payload || {}).then(function (result) {
     sendResponse({ ok: true, result: result });
   }).catch(function (error) {
