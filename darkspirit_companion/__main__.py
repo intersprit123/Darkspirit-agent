@@ -89,7 +89,11 @@ def speak(text: str) -> None:
     synthesized on a worker thread and played from a temporary WAV file; Windows SAPI
     is deliberately not used as a fallback.
     """
-    config = load_config()
+    try:
+        config = load_config()
+    except Exception:
+        logging.exception("Cannot load companion settings; speech was skipped.")
+        return
     api_key = str(config.get("fish_audio_api_key", "")).strip()
     if not api_key:
         logging.warning("Fish Audio voice is not configured; set fish_audio_api_key in companion.json.")
@@ -166,20 +170,25 @@ def enroll_face() -> None:
         str(Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml")
     )
     samples = []
+    last_sample_at = 0.0
     print("Face enrollment: look at the camera and slowly turn your head slightly.")
-    print("Press Q to cancel. Samples stay on this PC and are not uploaded.")
+    print("Enrollment takes about 6 seconds. Samples stay on this PC and are not uploaded.")
     try:
         while len(samples) < 40:
             ok, frame = camera.read()
             if not ok:
+                time.sleep(0.05)
                 continue
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             faces = detector.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(100, 100))
+            now = time.monotonic()
             for x, y, w, h in faces:
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (50, 200, 90), 2)
-                face = cv2.resize(gray[y : y + h, x : x + w], (160, 160))
-                if len(samples) < 40:
+                if now - last_sample_at >= 0.15:
+                    face = cv2.resize(gray[y : y + h, x : x + w], (160, 160))
                     samples.append(face)
+                    last_sample_at = now
+                break
             cv2.putText(frame, f"Samples: {len(samples)}/40 - Q cancels", (12, 28),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
             cv2.imshow("Darkspirit - Face enrollment (local)", frame)
@@ -388,7 +397,12 @@ def run_background() -> None:
                         if now - last_recognized_at > greeting_reset_seconds:
                             greeted = False
                             last_recognized_at = None
-                            logging.info("Face absent for %.0f seconds; greeting re-armed.", greeting_reset_seconds)
+                            # Stop microphone capture when the user has been away.
+                            voice_stop_event.set()
+                            logging.info(
+                                "Face absent for %.0f seconds; microphone listener stopping and greeting re-armed.",
+                                greeting_reset_seconds,
+                            )
                     time.sleep(0.08)
             finally:
                 # Release the device after every short check, including errors.
