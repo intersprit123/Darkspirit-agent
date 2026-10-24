@@ -7,26 +7,17 @@
   <style>
     body{font:14px/1.45 system-ui,Segoe UI,sans-serif;width:320px;margin:0;padding:16px;color:#172033;background:#f8fafc}
     h1{font-size:18px;margin:0 0 8px}p{margin:7px 0 12px;color:#475569}
-    label{display:block;font-weight:600;margin:12px 0 5px}
-    input{box-sizing:border-box;width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:7px;font:12px ui-monospace,monospace}
     button{padding:9px 12px;border:0;border-radius:7px;background:#202d4f;color:white;font-weight:600;cursor:pointer}
-    button.secondary{background:#e2e8f0;color:#172033}
-    .buttons{display:flex;gap:8px;margin-top:10px}.buttons button{flex:1}
     #status{white-space:pre-wrap;margin-top:12px;padding:9px;border-radius:7px;background:#e2e8f0;color:#172033}
     .small{font-size:12px;color:#64748b}
   </style>
 </head>
 <body>
   <h1>Darkspirit Agent</h1>
-  <p>Pair this extension with the local bridge. This uses your signed-in AI website session, not an API key.</p>
-  <label for="token">Local bridge pairing token</label>
-  <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste token from start.bat">
-  <div class="buttons">
-    <button id="save">Save token</button>
-    <button id="test" class="secondary">Test bridge</button>
-  </div>
-  <div id="status" role="status">Not tested yet.</div>
-  <p class="small">Never share your pairing token or commit it to GitHub. Supported pages: ChatGPT and Gemini.</p>
+  <p>Connects automatically to the local bridge. No pairing token or AI API key is needed.</p>
+  <button id="test">Test bridge</button>
+  <div id="status" role="status">Ready to test the local bridge.</div>
+  <p class="small">The bridge accepts local browser-extension connections without a pairing token. Keep computer-action approval enabled.</p>
   <script src="popup.js"></script>
 </body>
 </html>
