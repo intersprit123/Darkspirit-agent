@@ -73,12 +73,12 @@ pause
 goto menu
 
 :companion
-if not exist ".venv\\Scripts\\pythonw.exe" (
+if not exist ".venv\Scripts\pythonw.exe" (
   echo [ERROR] Dependencies are not installed yet. Choose option 1 first.
   pause
   goto menu
 )
-start "" ".venv\\Scripts\\pythonw.exe" -m darkspirit_companion --background
-echo Background companion launch requested. Logs: %%LOCALAPPDATA%%\\DarkspiritAgent\\companion.log
+start "" ".venv\Scripts\pythonw.exe" -m darkspirit_companion --background
+echo Background companion launch requested. Logs: %LOCALAPPDATA%\DarkspiritAgent\companion.log
 timeout /t 2 >nul
 goto menu
