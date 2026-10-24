@@ -15,7 +15,6 @@ import threading
 import time
 import urllib.error
 import urllib.request
-import winsound
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +83,53 @@ def configure_logging() -> None:
     )
 
 
+def _play_wav_with_sounddevice(wav_path: Path) -> None:
+    """Decode PCM WAV safely and play it through PortAudio's selected output device."""
+    import wave
+
+    import numpy as np
+    import sounddevice as sd
+
+    with wave.open(str(wav_path), "rb") as wav_file:
+        if wav_file.getcomptype() != "NONE":
+            raise ValueError(f"Unsupported WAV compression: {wav_file.getcomptype()}")
+        channels = wav_file.getnchannels()
+        sample_rate = wav_file.getframerate()
+        sample_width = wav_file.getsampwidth()
+        raw = wav_file.readframes(wav_file.getnframes())
+
+    if channels < 1 or sample_rate < 1 or not raw:
+        raise ValueError("WAV contains no playable audio frames.")
+    if sample_width == 1:
+        audio = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    elif sample_width == 2:
+        audio = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+    elif sample_width == 3:
+        packed = np.frombuffer(raw, dtype=np.uint8)
+        if packed.size % 3:
+            raise ValueError("WAV contains incomplete 24-bit audio samples.")
+        packed = packed.reshape(-1, 3).astype(np.int32)
+        samples = packed[:, 0] | (packed[:, 1] << 8) | (packed[:, 2] << 16)
+        samples = (samples ^ 0x800000) - 0x800000
+        audio = samples.astype(np.float32) / 8388608.0
+    elif sample_width == 4:
+        audio = np.frombuffer(raw, dtype="<i4").astype(np.float32) / 2147483648.0
+    else:
+        raise ValueError(f"Unsupported WAV sample width: {sample_width} bytes.")
+
+    if audio.size % channels:
+        raise ValueError("WAV audio sample count does not match its channel count.")
+    audio = audio.reshape(-1, channels)
+    sd.check_output_settings(samplerate=sample_rate, channels=channels, dtype="float32")
+    logging.info(
+        "Playing Fish Audio WAV through sounddevice: %s Hz, %s channel(s), %s-bit PCM.",
+        sample_rate,
+        channels,
+        sample_width * 8,
+    )
+    sd.play(audio, samplerate=sample_rate, blocking=True)
+
+
 def _synthesize_and_play(text: str, config: dict[str, Any], api_key: str) -> None:
     """Generate one WAV with Fish Audio and play it locally."""
     wav_path: Path | None = None
@@ -122,7 +168,8 @@ def _synthesize_and_play(text: str, config: dict[str, Any], api_key: str) -> Non
         ) as handle:
             wav_path = Path(handle.name)
             handle.write(audio)
-        winsound.PlaySound(str(wav_path), winsound.SND_FILENAME)
+        _play_wav_with_sounddevice(wav_path)
+        logging.info("Fish Audio speech playback completed.")
     except urllib.error.HTTPError as exc:
         logging.error(
             "Fish Audio TTS request failed with HTTP %s; check API key, quota, and voice ID.",
