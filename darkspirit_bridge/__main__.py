@@ -21,6 +21,8 @@ PORT = 17613
 TOKEN_FILE = Path.home() / ".darkspirit-agent" / "bridge.token"
 MAX_MESSAGE_BYTES = 32_768
 MAX_TOOL_OUTPUT_CHARS = 10_000
+_EMAIL_RE = re.compile(r"\\b[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}\\b")
+_LONG_NUMBER_RE = re.compile(r"\\b(?:\\d[ -]?){8,}\\b")
 EXTENSION_ORIGIN = re.compile(r"^chrome-extension://[a-p]{32}$")
 
 ACTION_TOOLS = {
@@ -121,19 +123,44 @@ def get_tool_catalog() -> list[dict[str, Any]]:
     return tools
 
 
+def _safe_label(value: Any, control_type: str = "") -> str:
+    text = str(value or "").replace("\\r", " ").replace("\\n", " ").strip()
+    if any(word in control_type.lower() for word in ("edit", "textbox", "document", "password")):
+        return "[input contents hidden]"
+    text = _EMAIL_RE.sub("[redacted email]", text)
+    text = _LONG_NUMBER_RE.sub("[redacted number]", text)
+    return text[:160]
+
+
 def desktop_snapshot() -> str:
-    """Return a bounded accessibility summary, never a screenshot or file contents."""
+    """Return a bounded accessibility summary with input values and metadata omitted."""
     state = get_desktop().get_state()
-    active = state.active_window.name if state.active_window else "None"
-    windows = [window.name for window in state.windows[:30]]
+    active = _safe_label(state.active_window.name) if state.active_window else "None"
+    windows = [_safe_label(window.name) for window in state.windows[:30]]
     tree = state.tree_state
-    interactive = tree.interactive_elements_to_string() if tree else "No accessibility tree."
-    scrollable = tree.scrollable_elements_to_string() if tree else ""
+    interactive = ["# id|window|control_type|name|coords"]
+    scrollable = ["# id|window|control_type|name|coords"]
+    if tree and tree.status:
+        for index, node in enumerate((tree.interactive_nodes or [])[:70]):
+            interactive.append(
+                str(index) + "|" + _safe_label(node.window_name) + "|"
+                + _safe_label(node.control_type) + "|" + _safe_label(node.name, node.control_type)
+                + "|" + node.center.to_string()
+            )
+        base = len(tree.interactive_nodes or [])
+        for offset, node in enumerate((tree.scrollable_nodes or [])[:25]):
+            scrollable.append(
+                str(base + offset) + "|" + _safe_label(node.window_name) + "|"
+                + _safe_label(node.control_type) + "|" + _safe_label(node.name, node.control_type)
+                + "|" + node.center.to_string()
+            )
+    else:
+        interactive.append("Accessibility tree unavailable.")
     return (
-        "Active window: " + active + "\n"
-        + "Other visible windows: " + json.dumps(windows, ensure_ascii=False) + "\n\n"
-        + "Interactive elements (bounded):\n" + interactive[:8000] + "\n\n"
-        + "Scrollable elements (bounded):\n" + scrollable[:2500]
+        "Active window: " + active + "\\n"
+        + "Other visible windows: " + json.dumps(windows, ensure_ascii=False) + "\\n\\n"
+        + "Interactive elements (input values omitted):\\n" + "\\n".join(interactive)[:8000] + "\\n\\n"
+        + "Scrollable elements: \\n" + "\\n".join(scrollable)[:2500]
     )[:MAX_TOOL_OUTPUT_CHARS]
 
 
@@ -184,7 +211,7 @@ async def handle_message(websocket, message: dict[str, Any]) -> None:
 
     if name == "get_desktop_state":
         try:
-            output = await asyncio.to_thread(desktop_snapshot)
+            output = desktop_snapshot()
             await send_response(websocket, "tool_result", rid, ok=True, text=output, read_only=True)
         except Exception as exc:
             await send_response(
