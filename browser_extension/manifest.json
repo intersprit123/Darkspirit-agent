@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Darkspirit Agent — Browser AI",
-  "version": "0.1.0",
-  "description": "Connect a signed-in ChatGPT or Gemini webpage to the local Darkspirit Agent bridge. No AI API key required.",
+  "version": "0.2.0",
+  "description": "Connect ChatGPT or Gemini to the local Darkspirit bridge and read AI replies aloud with your browser's default voice.",
   "permissions": [
     "storage",
     "tts"
