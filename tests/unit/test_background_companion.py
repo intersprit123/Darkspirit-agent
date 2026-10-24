@@ -1,4 +1,5 @@
 import json
+import queue
 import sys
 import threading
 import types
@@ -147,3 +148,30 @@ def test_listener_stops_cleanly_when_stop_event_is_set(monkeypatch, tmp_path):
     stop_event.set()
 
     assert companion.listen_for_speech(str(tmp_path), stop_event) is False
+
+
+
+def test_tts_uses_bounded_fifo_queue(monkeypatch):
+    class FakeThread:
+        def __init__(self, target, **_kwargs):
+            self.target = target
+
+        def start(self):
+            pass
+
+        def is_alive(self):
+            return True
+
+    config = companion.DEFAULT_CONFIG.copy()
+    config["fish_audio_api_key"] = "test-key"
+    speech_queue = queue.Queue(maxsize=20)
+    monkeypatch.setattr(companion, "_TTS_QUEUE", speech_queue)
+    monkeypatch.setattr(companion, "_TTS_WORKER", None)
+    monkeypatch.setattr(companion, "load_config", lambda: config)
+    monkeypatch.setattr(companion.threading, "Thread", FakeThread)
+
+    companion.speak("First reply")
+    companion.speak("Second reply")
+
+    assert [item[0] for item in speech_queue.queue] == ["First reply", "Second reply"]
+    assert speech_queue.maxsize == 20
