@@ -56,5 +56,6 @@ jobs:
         run: uv sync --extra dev --extra companion
 
       - name: Run unit tests
-        run: uv run python -m compileall -q darkspirit_companion darkspirit_bridge
+        run: |
+          uv run python -m compileall -q darkspirit_companion darkspirit_bridge
           uv run pytest tests/unit/ -v --tb=short
