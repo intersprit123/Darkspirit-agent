@@ -19,7 +19,7 @@
     '<label><input id="ds-actions" type="checkbox"> Enable computer actions for this task.</label>' +
     '<label><input id="ds-approve-each" type="checkbox" checked> Ask me before each app, mouse, or keyboard action.</label>' +
     '<label><input id="ds-speak-replies" type="checkbox" checked> Speak new AI replies aloud using the browser default voice.</label>' +
-    '<div class="ds-buttons"><button id="ds-start">Start task</button><button id="ds-stop" class="ds-danger" disabled>Stop</button><button id="ds-test" class="ds-secondary">Test bridge</button></div>' +
+    '<div class="ds-buttons"><button id="ds-start">Start task</button><button id="ds-stop" class="ds-danger" disabled>Stop</button><button id="ds-test" class="ds-secondary">Test bridge</button><button id="ds-mic" class="ds-secondary">🎙 Start microphone</button></div>' +
     '<div class="ds-buttons"><button id="ds-test-voice" class="ds-secondary">Test voice</button><button id="ds-stop-voice" class="ds-secondary">Stop voice</button></div>' +
     '<div id="ds-approval" class="ds-hidden"><p id="ds-approval-title"></p><pre id="ds-approval-preview" class="ds-preview"></pre><div class="ds-buttons"><button id="ds-approve">Approve action</button><button id="ds-deny" class="ds-danger">Deny</button></div></div>' +
     '<div id="ds-status" class="ds-status" role="status">Open the extension icon and save the token printed by start.bat.</div>' +
@@ -38,6 +38,7 @@
   const startButton = el("ds-start");
   const stopButton = el("ds-stop");
   const testButton = el("ds-test");
+  const micButton = el("ds-mic");
   const statusBox = el("ds-status");
   const finalBox = el("ds-final");
   const approvalBox = el("ds-approval");
@@ -56,6 +57,56 @@
     chrome.storage.local.set({ speakReplies: speakRepliesToggle.checked });
     if (!speakRepliesToggle.checked) setStatus("Automatic speech is off. Use Test voice to check the default voice.");
   });
+
+  // Starts only after a deliberate click; the browser controls microphone permission.
+  let speechRecognition = null;
+  let microphoneActive = false;
+  const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognitionAPI) {
+    micButton.disabled = true;
+    micButton.title = "Speech recognition is not supported by this browser.";
+  } else {
+    micButton.addEventListener("click", function () {
+      if (microphoneActive && speechRecognition) {
+        speechRecognition.stop();
+        return;
+      }
+      try {
+        speechRecognition = new SpeechRecognitionAPI();
+        speechRecognition.lang = "en-US";
+        speechRecognition.continuous = true;
+        speechRecognition.interimResults = false;
+        speechRecognition.onstart = function () {
+          microphoneActive = true;
+          micButton.textContent = "⏹ Stop microphone";
+          setStatus("Microphone listening. Speak; recognized words will be added to the task box.");
+        };
+        speechRecognition.onresult = function (event) {
+          const transcripts = [];
+          for (let i = event.resultIndex; i < event.results.length; i += 1) {
+            if (event.results[i].isFinal) transcripts.push(event.results[i][0].transcript.trim());
+          }
+          if (transcripts.length) {
+            const spoken = transcripts.join(" ");
+            taskInput.value = (taskInput.value.trim() ? taskInput.value.trim() + " " : "") + spoken;
+            setStatus("Heard: " + spoken);
+          }
+        };
+        speechRecognition.onerror = function (event) {
+          setStatus("Microphone error: " + (event.error || "permission or recognition unavailable") +
+            ". Check this site's microphone permission in browser settings.");
+        };
+        speechRecognition.onend = function () {
+          microphoneActive = false;
+          micButton.textContent = "🎙 Start microphone";
+        };
+        speechRecognition.start();
+      } catch (error) {
+        setStatus("Could not start microphone: " + (error.message || String(error)) +
+          ". Check this site's microphone permission in browser settings.");
+      }
+    });
+  }
 
   function sendVoiceMessage(message, announceAccepted) {
     chrome.runtime.sendMessage(message, function (response) {
@@ -200,10 +251,12 @@
   }
 
   function latestAssistantNode() {
-    const selector = isChatGPT ? '[data-message-author-role="assistant"]' : "model-response";
+    const selector = isChatGPT
+      ? '[data-message-author-role="assistant"]'
+      : 'model-response, [data-message-author-role="model"], .response-container';
     let nodes = Array.from(document.querySelectorAll(selector));
     if (!nodes.length && isGemini) {
-      nodes = Array.from(document.querySelectorAll("message-content, .model-response-text"));
+      nodes = Array.from(document.querySelectorAll("message-content, .model-response-text, .markdown-main-panel"));
     }
     return nodes.length ? nodes[nodes.length - 1] : null;
   }
