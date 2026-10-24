@@ -132,22 +132,40 @@ let voiceDeliveryRetryAfter = 0;
 let lastVoicePollError = "";
 let lastVoicePollErrorAt = 0;
 
-async function ensureGeminiTab() {
+async function ensureAITab() {
   const allTabs = await chrome.tabs.query({});
   const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const isChatGPTTab = function (candidate) {
+    return candidate.url &&
+      (candidate.url.indexOf("https://chatgpt.com/") === 0 ||
+       candidate.url.indexOf("https://chat.openai.com/") === 0);
+  };
   const isGeminiTab = function (candidate) {
     return candidate.url && candidate.url.indexOf("https://gemini.google.com/") === 0;
   };
-  let tab = activeTabs.find(isGeminiTab);
+  const isAITab = function (candidate) {
+    return isChatGPTTab(candidate) || isGeminiTab(candidate);
+  };
+
+  // Prefer the AI page the user is currently looking at. This lets voice prompts
+  // land in the active ChatGPT conversation instead of always switching to Gemini.
+  let tab = activeTabs.find(isAITab);
+
   if (!tab) {
-    const matches = allTabs.filter(isGeminiTab);
-    matches.sort(function (a, b) {
+    const chatGPTMatches = allTabs.filter(isChatGPTTab);
+    const geminiMatches = allTabs.filter(isGeminiTab);
+    chatGPTMatches.sort(function (a, b) {
       return (b.lastAccessed || 0) - (a.lastAccessed || 0);
     });
-    tab = matches[0];
+    geminiMatches.sort(function (a, b) {
+      return (b.lastAccessed || 0) - (a.lastAccessed || 0);
+    });
+    // Prefer a signed-in ChatGPT tab when the user is not actively on either AI site.
+    tab = chatGPTMatches[0] || geminiMatches[0];
   }
+
   if (!tab) {
-    tab = await chrome.tabs.create({ url: "https://gemini.google.com/app", active: true });
+    tab = await chrome.tabs.create({ url: "https://chatgpt.com/", active: true });
   } else {
     await chrome.tabs.update(tab.id, { active: true });
   }
@@ -163,7 +181,7 @@ async function ensureGeminiTab() {
 
 async function deliverPendingVoice() {
   if (!pendingVoiceText) return false;
-  const tab = await ensureGeminiTab();
+  const tab = await ensureAITab();
   try {
     const response = await chrome.tabs.sendMessage(tab.id, {
       type: "darkspiritVoiceSubmit",
