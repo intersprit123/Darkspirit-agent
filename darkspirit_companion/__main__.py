@@ -233,7 +233,7 @@ def configure() -> None:
     print("To run quietly in the background, use start_companion.bat.")
 
 
-def listen_for_speech(model_path: str, stop_event: threading.Event) -> None:
+def listen_for_speech(model_path: str, stop_event: threading.Event) -> bool:
     """Continuously transcribe locally; run this on its own worker thread."""
     try:
         import sounddevice as sd
@@ -273,7 +273,7 @@ def listen_for_speech(model_path: str, stop_event: threading.Event) -> None:
             if command in {"stop listening", "goodbye darkspirit", "go to sleep"}:
                 logging.info("Voice listener paused by a recognized stop phrase.")
                 speak("Okay. I'll wait until I recognize you again.")
-                return
+                return True
 
             if command in {"open calculator", "launch calculator", "start calculator", "calculator"}:
                 try:
@@ -291,7 +291,10 @@ def listen_for_speech(model_path: str, stop_event: threading.Event) -> None:
                 continue
 
             logging.info("Speech recognized; no allowlisted action matched.")
-            speak(f"I heard you. I can open Calculator so far, but my AI conversation connection isn't configured yet.")
+            speak("I heard you. I can open Calculator so far, but my AI conversation connection isn't configured yet.")
+
+    # False means capture ended because its stop event was set, not by a voice command.
+    return False
 
 
 def run_background() -> None:
@@ -325,6 +328,31 @@ def run_background() -> None:
     last_recognized_at: float | None = None
     voice_stop_event = threading.Event()
     voice_thread: threading.Thread | None = None
+    voice_paused_event = threading.Event()
+    voice_retry_after = 0.0
+
+    def start_voice_listener(voice_config: dict[str, Any]) -> None:
+        nonlocal voice_stop_event, voice_thread, voice_retry_after
+        worker_stop_event = threading.Event()
+        voice_stop_event = worker_stop_event
+        voice_retry_after = time.monotonic() + 10.0
+
+        def voice_worker() -> None:
+            try:
+                paused_by_command = listen_for_speech(
+                    str(voice_config.get("vosk_model_path", "")), worker_stop_event
+                )
+                if paused_by_command:
+                    voice_paused_event.set()
+            except Exception:
+                logging.exception("Local voice input failed; will retry after a pause.")
+                speak("My microphone needs attention. I'll try listening again shortly.")
+
+        voice_thread = threading.Thread(
+            target=voice_worker, name="Darkspirit-Voice-Listener", daemon=True
+        )
+        voice_thread.start()
+
     logging.info(
         "Background companion started in privacy mode: camera active for %.1fs, "
         "then released for %.1fs.",
@@ -376,33 +404,30 @@ def run_background() -> None:
                             if config.get("greet_on_recognition", True):
                                 speak(f"Hello {name}. I'm Darkspirit. I'm here when you need me.")
                             greeted = True
-                            if config.get("microphone_enabled") and config.get("listen_after_greeting"):
-                                if voice_thread is None or not voice_thread.is_alive():
-                                    voice_stop_event.clear()
-
-                                    voice_config = config.copy()
-
-                                    def voice_worker() -> None:
-                                        try:
-                                            listen_for_speech(str(voice_config.get("vosk_model_path", "")), voice_stop_event)
-                                        except Exception:
-                                            logging.exception("Local voice input failed.")
-                                            speak("My microphone setup needs attention. I'll keep checking for your face.")
-
-                                    voice_thread = threading.Thread(
-                                        target=voice_worker, name="Darkspirit-Voice-Listener", daemon=True
-                                    )
-                                    voice_thread.start()
                     elif greeted and last_recognized_at is not None:
                         if now - last_recognized_at > greeting_reset_seconds:
                             greeted = False
                             last_recognized_at = None
                             # Stop microphone capture when the user has been away.
                             voice_stop_event.set()
+                            voice_paused_event.clear()
+                            voice_retry_after = 0.0
                             logging.info(
                                 "Face absent for %.0f seconds; microphone listener stopping and greeting re-armed.",
                                 greeting_reset_seconds,
                             )
+                    # Supervise the mic independently: recover from transient worker failures
+                    # without repeating the greeting. A voice stop phrase stays paused until
+                    # the face has been absent long enough to re-arm the companion.
+                    if (
+                        greeted
+                        and config.get("microphone_enabled")
+                        and config.get("listen_after_greeting")
+                        and not voice_paused_event.is_set()
+                        and (voice_thread is None or not voice_thread.is_alive())
+                        and time.monotonic() >= voice_retry_after
+                    ):
+                        start_voice_listener(config.copy())
                     time.sleep(0.08)
             finally:
                 # Release the device after every short check, including errors.
