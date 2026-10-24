@@ -9,6 +9,12 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import secrets
+import threading
+from collections import deque
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+import os
 from typing import Any
 
 from websockets.asyncio.server import serve
@@ -16,6 +22,13 @@ from websockets.exceptions import ConnectionClosed
 
 HOST = "127.0.0.1"
 PORT = 17613
+VOICE_HOST = "127.0.0.1"
+VOICE_PORT = 17614
+VOICE_APP_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "DarkspiritAgent"
+VOICE_TOKEN_PATH = VOICE_APP_DIR / "voice-bridge.token"
+_voice_token = secrets.token_urlsafe(32)
+_voice_queue: deque[str] = deque(maxlen=20)
+_voice_queue_lock = threading.Lock()
 MAX_MESSAGE_BYTES = 32_768
 MAX_TOOL_OUTPUT_CHARS = 10_000
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
@@ -315,11 +328,103 @@ async def handler(websocket) -> None:
         return
 
 
+
+
+class VoiceHTTPHandler(BaseHTTPRequestHandler):
+    """Loopback-only authenticated queue for local companion transcripts."""
+    def log_message(self, fmt, *args):
+        return
+
+    def _send(self, status: int, body: dict[str, Any], origin: str = "") -> None:
+        payload = json.dumps(body).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        if origin and EXTENSION_ORIGIN.fullmatch(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _authorized_extension(self) -> bool:
+        origin = self.headers.get("Origin", "")
+        token = self.headers.get("X-Darkspirit-Token", "")
+        return bool(EXTENSION_ORIGIN.fullmatch(origin)) and secrets.compare_digest(token, _voice_token)
+
+    def do_OPTIONS(self):
+        origin = self.headers.get("Origin", "")
+        if not EXTENSION_ORIGIN.fullmatch(origin):
+            self._send(403, {"ok": False, "error": "Origin not allowed"})
+            return
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Darkspirit-Token")
+        self.send_header("Access-Control-Max-Age", "60")
+        self.end_headers()
+
+    def do_GET(self):
+        origin = self.headers.get("Origin", "")
+        if self.path == "/token" and EXTENSION_ORIGIN.fullmatch(origin):
+            body = json.dumps({"ok": True, "token": _voice_token}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if self.path == "/next" and self._authorized_extension():
+            with _voice_queue_lock:
+                transcript = _voice_queue.popleft() if _voice_queue else ""
+            self._send(200, {"ok": True, "text": transcript}, origin)
+            return
+        self._send(403, {"ok": False, "error": "Unauthorized"}, origin)
+
+    def do_POST(self):
+        if self.path != "/submit" or self.headers.get("Origin"):
+            self._send(403, {"ok": False, "error": "Local companion only"})
+            return
+        if not secrets.compare_digest(self.headers.get("X-Darkspirit-Token", ""), _voice_token):
+            self._send(403, {"ok": False, "error": "Unauthorized"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 8192:
+                raise ValueError("Invalid payload size")
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+            transcript = data.get("text", "") if isinstance(data, dict) else ""
+            if not isinstance(transcript, str) or not transcript.strip() or len(transcript) > 4000:
+                raise ValueError("Invalid transcript")
+            with _voice_queue_lock:
+                if len(_voice_queue) >= 20:
+                    _voice_queue.popleft()
+                _voice_queue.append(transcript.strip())
+            self._send(200, {"ok": True})
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+            self._send(400, {"ok": False, "error": "Invalid transcript payload"})
+
+def _run_voice_http_server() -> None:
+    VOICE_APP_DIR.mkdir(parents=True, exist_ok=True)
+    VOICE_TOKEN_PATH.write_text(_voice_token, encoding="utf-8")
+    try:
+        os.chmod(VOICE_TOKEN_PATH, 0o600)
+    except OSError:
+        pass
+    server = ThreadingHTTPServer((VOICE_HOST, VOICE_PORT), VoiceHTTPHandler)
+    server.daemon_threads = True
+    server.serve_forever()
+
+
 async def run_server() -> None:
     print()
     print("Darkspirit Agent — Browser AI Bridge")
     print("Listening locally at ws://" + HOST + ":" + str(PORT))
     print("Mode: actions disabled until explicitly enabled in the extension.")
+    threading.Thread(target=_run_voice_http_server, name="Darkspirit-Voice-HTTP", daemon=True).start()
+    print("Voice queue listening locally at http://" + VOICE_HOST + ":" + str(VOICE_PORT))
     print("Automatic local pairing enabled; no token is required.")
     print("Press Ctrl+C to stop. Port conflicts are reported; no process is killed.")
     async with serve(
