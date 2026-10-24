@@ -100,7 +100,7 @@ def speak(text: str) -> None:
         return
 
     def synthesize_and_play() -> None:
-        # Serialize synthesis and playback so replies never overlap or play out of order.
+        # Serialize synthesis and playback so replies never overlap.
         with _SPEECH_LOCK:
             wav_path: Path | None = None
             try:
@@ -373,16 +373,24 @@ def run_background() -> None:
             if not camera.isOpened():
                 logging.warning("Camera unavailable during privacy check; retrying after pause.")
                 camera.release()
+                # Without a functioning camera we cannot know whether the user is present.
+                voice_stop_event.set()
+                greeted = False
+                last_recognized_at = None
+                voice_paused_event.clear()
+                voice_retry_after = 0.0
                 time.sleep(camera_sleep_seconds)
                 continue
 
             check_started = time.monotonic()
+            camera_frames_read = 0
             try:
                 while time.monotonic() - check_started < camera_active_seconds:
                     ok, frame = camera.read()
                     if not ok:
                         time.sleep(0.05)
                         continue
+                    camera_frames_read += 1
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     faces = detector.detectMultiScale(
                         gray, scaleFactor=1.2, minNeighbors=5, minSize=(100, 100)
@@ -433,6 +441,16 @@ def run_background() -> None:
                 # Release the device after every short check, including errors.
                 camera.release()
                 logging.info("Privacy check finished; camera released.")
+
+            if camera_frames_read == 0:
+                # A camera that opens but cannot provide frames is not reliable enough
+                # to justify leaving the microphone worker active.
+                voice_stop_event.set()
+                greeted = False
+                last_recognized_at = None
+                voice_paused_event.clear()
+                voice_retry_after = 0.0
+                logging.warning("No camera frames received; microphone listener stopped for privacy.")
 
             time.sleep(camera_sleep_seconds)
     except KeyboardInterrupt:
