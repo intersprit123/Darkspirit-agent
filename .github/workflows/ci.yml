@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feature/browser-ai-bridge]
+    branches: [main, feature/browser-ai-bridge, feature/background-companion]
   pull_request:
     branches: [main]
 
