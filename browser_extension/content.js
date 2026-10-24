@@ -130,24 +130,38 @@
     sendVoiceMessage({ type: "ttsStop" }, true);
   });
 
-  chrome.runtime.onMessage.addListener(function (message) {
+  chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     if (message && message.type === "darkspiritVoiceSubmit" && typeof message.text === "string") {
+      const transcript = message.text.trim();
+      if (!transcript) {
+        sendResponse({ ok: false, error: "The voice transcript was empty." });
+        return false;
+      }
       if (isGemini) {
         // A Shift+S voice request explicitly expects a spoken answer.
         speakRepliesToggle.checked = true;
         chrome.storage.local.set({ speakReplies: true });
       }
       if (document.visibilityState !== "visible") {
-        setStatus("Voice transcript received, but this tab is not visible. Focus this ChatGPT/Gemini tab and speak again.");
+        const reason = "This Gemini/ChatGPT tab is not visible yet.";
+        setStatus("Voice transcript is queued; waiting for this tab to become visible.");
+        sendResponse({ ok: false, error: reason });
         return false;
       }
-      sendChatMessage(message.text).then(function () {
-        setStatus("Voice task submitted: " + message.text);
+      setStatus("Sending voice transcript to " + (isGemini ? "Gemini" : "ChatGPT") + "…");
+      sendChatMessage(transcript).then(function () {
+        setStatus("Voice prompt submitted to " + (isGemini ? "Gemini" : "ChatGPT") + ".");
+        sendResponse({ ok: true });
       }).catch(function (error) {
-        taskInput.value = message.text;
-        setStatus("Voice transcript ready; please submit manually: " + (error.message || String(error)));
+        const reason = error && error.message ? error.message : String(error);
+        taskInput.value = transcript;
+        setStatus("Voice prompt was NOT sent. Transcript kept in the queue. " + reason);
+        sendResponse({ ok: false, error: reason });
       });
-      return false;
+      // Keep the message channel open until the chat UI has either accepted or
+      // rejected the transcript. The background service worker uses this
+      // acknowledgement to decide whether it may remove the queued text.
+      return true;
     }
     if (!message || message.type !== "ttsStatus" || message.target !== "tab") return false;
     if (message.status === "error") setStatus("Browser voice failed: " + (message.error || "unknown speech error"));

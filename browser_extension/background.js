@@ -128,6 +128,9 @@ let voicePollTimer = null;
 let voiceBridgeToken = null;
 let pendingVoiceText = null;
 let voicePollInFlight = false;
+let voiceDeliveryRetryAfter = 0;
+let lastVoicePollError = "";
+let lastVoicePollErrorAt = 0;
 
 async function ensureGeminiTab() {
   const allTabs = await chrome.tabs.query({});
@@ -162,22 +165,30 @@ async function deliverPendingVoice() {
   if (!pendingVoiceText) return false;
   const tab = await ensureGeminiTab();
   try {
-    await chrome.tabs.sendMessage(tab.id, {
+    const response = await chrome.tabs.sendMessage(tab.id, {
       type: "darkspiritVoiceSubmit",
       text: pendingVoiceText
     });
+    if (!response || response.ok !== true) {
+      throw new Error(response && response.error ? response.error : "Gemini page did not confirm prompt submission.");
+    }
     pendingVoiceText = null;
     await chrome.storage.session.remove("darkspiritPendingVoiceText");
+    console.info("Darkspirit voice transcript submitted to Gemini page.");
     return true;
-  } catch (_) {
-    // Gemini may still be loading or its content script may need to initialize.
-    // Keep the transcript and retry; do not discard the user's words.
+  } catch (error) {
+    // Keep the transcript and retry until the page confirms that submission
+    // succeeded. A delivered extension message alone is not a successful send.
+    const detail = error && error.message ? error.message : String(error);
+    voiceDeliveryRetryAfter = Date.now() + 2500;
+    console.warn("Darkspirit voice transcript is still pending:", detail);
     return false;
   }
 }
 
 async function pollVoiceQueue() {
   if (voicePollInFlight) return;
+  if (pendingVoiceText && Date.now() < voiceDeliveryRetryAfter) return;
   voicePollInFlight = true;
   try {
     if (!pendingVoiceText) {
@@ -210,8 +221,15 @@ async function pollVoiceQueue() {
       await chrome.storage.session.set({ darkspiritPendingVoiceText: pendingVoiceText });
       await deliverPendingVoice();
     }
-  } catch (_) {
+  } catch (error) {
     voiceBridgeToken = null;
+    const detail = error && error.message ? error.message : String(error);
+    const now = Date.now();
+    if (detail !== lastVoicePollError || now - lastVoicePollErrorAt >= 15000) {
+      console.warn("Darkspirit voice queue polling failed:", detail);
+      lastVoicePollError = detail;
+      lastVoicePollErrorAt = now;
+    }
   } finally {
     voicePollInFlight = false;
   }
