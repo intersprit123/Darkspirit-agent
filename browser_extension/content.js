@@ -13,7 +13,7 @@
   panel.id = "darkspirit-agent-panel";
   panel.innerHTML =
     '<div class="ds-heading"><span class="ds-title">Darkspirit Agent</span><span class="ds-badge">BROWSER AI</span></div>' +
-    '<div class="ds-note">Voice prompts are transcribed locally and sent to this chat. Gemini replies are spoken using the browser voice. Computer actions stay off until explicitly enabled.</div>' +
+    '<div class="ds-note">Voice prompts are transcribed locally and sent to the active ChatGPT or Gemini conversation. Replies can be spoken using the browser voice. Computer actions stay off until explicitly enabled.</div>' +
     '<textarea id="ds-task" aria-label="Task" placeholder="What should Darkspirit Agent do on your PC?"></textarea>' +
     '<label><input id="ds-share" type="checkbox"> I understand desktop information is sent to this AI website.</label>' +
     '<label><input id="ds-actions" type="checkbox"> Enable computer actions for this task.</label>' +
@@ -22,7 +22,7 @@
     '<div class="ds-buttons"><button id="ds-start">Start task</button><button id="ds-stop" class="ds-danger" disabled>Stop</button><button id="ds-test" class="ds-secondary">Test bridge</button><button id="ds-mic" class="ds-secondary">🎙 Start microphone</button></div>' +
     '<div class="ds-buttons"><button id="ds-test-voice" class="ds-secondary">Test voice</button><button id="ds-stop-voice" class="ds-secondary">Stop voice</button></div>' +
     '<div id="ds-approval" class="ds-hidden"><p id="ds-approval-title"></p><pre id="ds-approval-preview" class="ds-preview"></pre><div class="ds-buttons"><button id="ds-approve">Approve action</button><button id="ds-deny" class="ds-danger">Deny</button></div></div>' +
-    '<div id="ds-status" class="ds-status" role="status">Voice companion: run Start Gemini Voice, then press Shift+S to speak.</div>' +
+    '<div id="ds-status" class="ds-status" role="status">Voice companion: start Darkspirit Gemini Voice, then press Shift+S to send speech to the active ChatGPT/Gemini tab.</div>' +
     '<div id="ds-final" class="ds-note"></div>' +
     '<div class="ds-footer">No shell, arbitrary-code, or direct file-management tools are exposed. Stop ends the task loop; an already-running action may finish.</div>';
   document.documentElement.appendChild(panel);
@@ -137,11 +137,9 @@
         sendResponse({ ok: false, error: "The voice transcript was empty." });
         return false;
       }
-      if (isGemini) {
-        // A Shift+S voice request explicitly expects a spoken answer.
-        speakRepliesToggle.checked = true;
-        chrome.storage.local.set({ speakReplies: true });
-      }
+      // Voice submissions should receive a spoken reply on either supported AI site.
+      speakRepliesToggle.checked = true;
+      chrome.storage.local.set({ speakReplies: true });
       if (document.visibilityState !== "visible") {
         const reason = "This Gemini/ChatGPT tab is not visible yet.";
         setStatus("Voice transcript is queued; waiting for this tab to become visible.");
