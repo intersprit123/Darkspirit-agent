@@ -6,6 +6,7 @@ title Darkspirit Agent
 if /I "%~1"=="--install" goto install
 if /I "%~1"=="--browser-bridge" goto browser_bridge
 if /I "%~1"=="--local-ollama" goto local_ollama
+if /I "%~1"=="--companion" goto companion
 
 :menu
 cls
@@ -69,4 +70,15 @@ set "RC=%ERRORLEVEL%"
 echo.
 echo Ollama agent exited with code %RC%.
 pause
+goto menu
+
+:companion
+if not exist ".venv\\Scripts\\pythonw.exe" (
+  echo [ERROR] Dependencies are not installed yet. Choose option 1 first.
+  pause
+  goto menu
+)
+start "" ".venv\\Scripts\\pythonw.exe" -m darkspirit_companion --background
+echo Background companion launch requested. Logs: %%LOCALAPPDATA%%\\DarkspiritAgent\\companion.log
+timeout /t 2 >nul
 goto menu
