@@ -351,11 +351,17 @@ def run_background() -> None:
         logging.error("OpenCV missing; camera remains off.")
         return
 
-    detector = cv2.CascadeClassifier(
-        str(Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml")
-    )
-    recognizer = cv2.face.LBPHFaceRecognizer_create()
-    recognizer.read(str(FACE_MODEL_PATH))
+    try:
+        detector = cv2.CascadeClassifier(
+            str(Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml")
+        )
+        if detector.empty():
+            raise RuntimeError("OpenCV's face-detection cascade could not be loaded.")
+        recognizer = cv2.face.LBPHFaceRecognizer_create()
+        recognizer.read(str(FACE_MODEL_PATH))
+    except Exception:
+        logging.exception("Face recognition could not initialize; camera remains off.")
+        return
 
     # Privacy mode: the webcam is opened only for a short check, then released.
     # These values can be adjusted later if detection is too slow or too frequent.
@@ -407,7 +413,17 @@ def run_background() -> None:
                 logging.info("Camera consent disabled or face enrollment removed; stopping camera checks.")
                 break
 
-            camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+            try:
+                camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+            except Exception:
+                logging.exception("Camera initialization failed; will retry after a pause.")
+                voice_stop_event.set()
+                greeted = False
+                last_recognized_at = None
+                voice_paused_event.clear()
+                voice_retry_after = 0.0
+                time.sleep(camera_sleep_seconds)
+                continue
             if not camera.isOpened():
                 logging.warning("Camera unavailable during privacy check; retrying after pause.")
                 camera.release()
@@ -422,6 +438,7 @@ def run_background() -> None:
 
             check_started = time.monotonic()
             camera_frames_read = 0
+            camera_check_failed = False
             try:
                 while time.monotonic() - check_started < camera_active_seconds:
                     ok, frame = camera.read()
@@ -475,20 +492,26 @@ def run_background() -> None:
                     ):
                         start_voice_listener(config.copy())
                     time.sleep(0.08)
+            except Exception:
+                camera_check_failed = True
+                logging.exception("Camera privacy check failed; releasing the device and retrying.")
             finally:
                 # Release the device after every short check, including errors.
                 camera.release()
                 logging.info("Privacy check finished; camera released.")
 
-            if camera_frames_read == 0:
-                # A camera that opens but cannot provide frames is not reliable enough
-                # to justify leaving the microphone worker active.
+            if camera_frames_read == 0 or camera_check_failed:
+                # A camera that cannot reliably verify presence must not leave the
+                # microphone worker active.
                 voice_stop_event.set()
                 greeted = False
                 last_recognized_at = None
                 voice_paused_event.clear()
                 voice_retry_after = 0.0
-                logging.warning("No camera frames received; microphone listener stopped for privacy.")
+                if camera_frames_read == 0:
+                    logging.warning("No camera frames received; microphone listener stopped for privacy.")
+                else:
+                    logging.warning("Camera check errored; microphone listener stopped for privacy.")
 
             time.sleep(camera_sleep_seconds)
     except KeyboardInterrupt:
