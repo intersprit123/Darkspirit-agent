@@ -112,8 +112,7 @@ def test_local_hearing_handles_stop_phrase_without_network(monkeypatch, tmp_path
     monkeypatch.setattr(companion, "speak", spoken.append)
     stop_event = threading.Event()
 
-    companion.listen_for_speech(str(tmp_path), stop_event)
-
+    assert companion.listen_for_speech(str(tmp_path), stop_event) is True
     assert spoken == ["Okay. I'll wait until I recognize you again."]
 
 
@@ -124,10 +123,27 @@ def test_hearing_only_executes_allowlisted_calculator_action(monkeypatch, tmp_pa
     monkeypatch.setattr(companion, "speak", spoken.append)
     monkeypatch.setattr("subprocess.Popen", lambda *args, **kwargs: launched.append((args, kwargs)))
 
-    companion.listen_for_speech(str(tmp_path), threading.Event())
+    assert companion.listen_for_speech(str(tmp_path), threading.Event()) is True
 
     assert len(launched) == 1
     args, kwargs = launched[0]
     assert args[0] == ["calc.exe"]
     assert kwargs["shell"] is False
     assert "Opening Calculator." in spoken
+
+
+def test_speech_skips_cleanly_if_config_is_broken(monkeypatch, caplog):
+    def broken_config():
+        raise RuntimeError("bad config")
+
+    monkeypatch.setattr(companion, "load_config", broken_config)
+    companion.speak("Hello")
+    assert "speech was skipped" in caplog.text
+
+
+def test_listener_stops_cleanly_when_stop_event_is_set(monkeypatch, tmp_path):
+    _install_fake_audio(monkeypatch, [])
+    stop_event = threading.Event()
+    stop_event.set()
+
+    assert companion.listen_for_speech(str(tmp_path), stop_event) is False
