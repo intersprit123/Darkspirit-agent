@@ -356,6 +356,10 @@ The integration is experimental and requires manual pairing with a private token
 See [docs/browser-ai.md](docs/browser-ai.md) for complete setup, troubleshooting, privacy, and safety information. See [docs/credits.md](docs/credits.md) for third-party references.
 
 
+## Browser extension default voice
+
+The Browser AI extension can read new ChatGPT/Gemini replies aloud using Chromium's built-in default system voice. It does not need a Fish Audio API key. Refresh the unpacked extension in `edge://extensions` or `chrome://extensions`, refresh the AI webpage, then use **Test voice** in the panel or extension popup. See [docs/browser-ai.md](docs/browser-ai.md#default-voice-and-speech-testing) for setup and troubleshooting.
+
 ## Background companion prototype
 
 An opt-in background-first Windows companion prototype is available in `darkspirit_companion`. It supports local face enrollment and a local greeting, with optional offline speech capture. Camera and microphone are disabled by default; see [docs/background-companion.md](docs/background-companion.md) for setup and important limitations. The browser AI bridge remains separate and unchanged.
