@@ -3,8 +3,7 @@
 ## Start
 
 Run `start_gemini_voice.bat` from the project folder. Approve the session prompt.
-The companion starts in the background, ensures the local browser bridge is running,
-and opens Gemini in Chrome.
+The companion starts in the background and ensures the local browser bridge is running. Voice transcripts are sent to the ChatGPT or Gemini tab you are currently using; if neither AI site is open, it opens ChatGPT.
 
 ## Controls
 
@@ -15,8 +14,7 @@ and opens Gemini in Chrome.
 
 The microphone opens only after consent and an explicit Shift+S press. Vosk performs speech
 recognition locally. The recognized text is submitted to the authenticated localhost bridge,
-then the browser extension inserts it into Gemini. The extension speaks Gemini's reply through
-Chrome's default text-to-speech voice. This voice path does not enable PC-control actions.
+then the browser extension inserts it into the active ChatGPT or Gemini conversation. The extension speaks the AI's reply through Chrome's default text-to-speech voice. This voice path does not enable PC-control actions.
 
 ## First-time browser setup
 
