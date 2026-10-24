@@ -1,4 +1,4 @@
-"""Authenticated localhost bridge from browser AI to selected Windows-Use tools.
+"""Localhost bridge from browser AI to selected Windows-Use tools.
 
 Only a small allow-list is exposed. Shell, file, memory, and arbitrary-code tools are
 intentionally unavailable to browser-originated requests.
@@ -8,10 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
-import secrets
-from pathlib import Path
 from typing import Any
 
 from websockets.asyncio.server import serve
@@ -19,7 +16,6 @@ from websockets.exceptions import ConnectionClosed
 
 HOST = "127.0.0.1"
 PORT = 17613
-TOKEN_FILE = Path.home() / ".darkspirit-agent" / "bridge.token"
 MAX_MESSAGE_BYTES = 32_768
 MAX_TOOL_OUTPUT_CHARS = 10_000
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
@@ -38,26 +34,6 @@ ACTION_TOOLS = {
 _actions_enabled = False
 _desktop = None
 _tool_map: dict[str, Any] | None = None
-
-
-def load_token() -> str:
-    """Create/read a local pairing token; never store it in the repository."""
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        os.chmod(TOKEN_FILE.parent, 0o700)
-    except OSError:
-        pass
-    if TOKEN_FILE.exists():
-        token = TOKEN_FILE.read_text(encoding="utf-8").strip()
-        if len(token) >= 32:
-            return token
-    token = secrets.token_urlsafe(32)
-    TOKEN_FILE.write_text(token, encoding="utf-8")
-    try:
-        os.chmod(TOKEN_FILE, 0o600)
-    except OSError:
-        pass
-    return token
 
 
 def get_desktop():
@@ -311,12 +287,8 @@ async def handler(websocket) -> None:
         except json.JSONDecodeError:
             await websocket.close(code=1008, reason="Expected JSON authentication")
             return
-        if (
-            not isinstance(auth, dict)
-            or auth.get("type") != "authenticate"
-            or not secrets.compare_digest(str(auth.get("token", "")), load_token())
-        ):
-            await websocket.close(code=1008, reason="Authentication failed")
+        if not isinstance(auth, dict) or auth.get("type") != "authenticate":
+            await websocket.close(code=1008, reason="Expected bridge handshake")
             return
 
         await websocket.send(
@@ -344,13 +316,11 @@ async def handler(websocket) -> None:
 
 
 async def run_server() -> None:
-    token = load_token()
     print()
     print("Darkspirit Agent — Browser AI Bridge")
     print("Listening locally at ws://" + HOST + ":" + str(PORT))
     print("Mode: actions disabled until explicitly enabled in the extension.")
-    print("Pairing token (paste into the extension popup; keep it private):")
-    print(token)
+    print("Automatic local pairing enabled; no token is required.")
     print("Press Ctrl+C to stop. Port conflicts are reported; no process is killed.")
     async with serve(
         handler,
