@@ -24,9 +24,6 @@ jobs:
       - name: Lint bridge and bridge tests
         run: ruff check darkspirit_bridge tests/unit/test_browser_bridge.py
 
-      - name: Show bridge formatter suggestions
-        run: ruff format --diff darkspirit_bridge/__main__.py || true
-
       - name: Check formatting of bridge and bridge tests
         run: ruff format --check darkspirit_bridge tests/unit/test_browser_bridge.py
 
