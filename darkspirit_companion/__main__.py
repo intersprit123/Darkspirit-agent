@@ -10,7 +10,6 @@ import json
 import logging
 import os
 import queue
-import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -26,7 +25,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "face_enrolled": False,
     "greet_on_recognition": True,
     "listen_after_greeting": True,
-    "memory_enabled": True,
+    "memory_enabled": False,
     "user_name": "",
     "voice_language": "en-US",
     "vosk_model_path": "",
@@ -159,7 +158,7 @@ def configure() -> None:
     config["microphone_enabled"] = (
         input("Enable local microphone listening after face recognition? [y/N] ").strip().lower() == "y"
     )
-    config["memory_enabled"] = input("Allow local memory only when you explicitly ask to remember? [Y/n] ").strip().lower() != "n"
+    config["memory_enabled"] = input("Enable local memory? You must still explicitly ask it to remember each item. [y/N] ").strip().lower() == "y"
     config["greet_on_recognition"] = True
     config["listen_after_greeting"] = True
     save_config(config)
