@@ -188,11 +188,11 @@ async function deliverPendingVoice() {
       text: pendingVoiceText
     });
     if (!response || response.ok !== true) {
-      throw new Error(response && response.error ? response.error : "Gemini page did not confirm prompt submission.");
+      throw new Error(response && response.error ? response.error : "The AI page did not confirm prompt submission.");
     }
     pendingVoiceText = null;
     await chrome.storage.session.remove("darkspiritPendingVoiceText");
-    console.info("Darkspirit voice transcript submitted to Gemini page.");
+    console.info("Darkspirit voice transcript submitted to the active AI page.");
     return true;
   } catch (error) {
     // Keep the transcript and retry until the page confirms that submission
