@@ -10,7 +10,12 @@ import json
 import logging
 import os
 import queue
+import tempfile
+import threading
 import time
+import urllib.error
+import urllib.request
+import winsound
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +34,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "user_name": "",
     "voice_language": "en-US",
     "vosk_model_path": "",
+    "fish_audio_api_key": "",
+    "fish_audio_voice_id": "b3c51bf6029f4201a342b40827250784",
+    "fish_audio_model": "s2.1-pro-free",
+    "fish_audio_speed": 1.0,
 }
 
 
@@ -73,23 +82,55 @@ def configure_logging() -> None:
 
 
 def speak(text: str) -> None:
-    """Speak locally through Windows SAPI without opening a visible window."""
-    import subprocess
+    """Generate Verity-style speech through Fish Audio without blocking camera checks.
 
-    safe_text = text.replace("'", "''")
-    script = (
-        "Add-Type -AssemblyName System.Speech; "
-        "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-        f"$s.Speak('{safe_text}')"
-    )
-    subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        timeout=45,
-    )
+    Fish Audio credentials are supplied by the user in the local config. Speech is
+    synthesized on a worker thread and played from a temporary WAV file; Windows SAPI
+    is deliberately not used as a fallback.
+    """
+    config = load_config()
+    api_key = str(config.get("fish_audio_api_key", "")).strip()
+    if not api_key:
+        logging.warning("Fish Audio voice is not configured; set fish_audio_api_key in companion.json.")
+        return
+
+    def synthesize_and_play() -> None:
+        try:
+            payload = {
+                "text": text[:500],
+                "reference_id": str(config.get("fish_audio_voice_id") or DEFAULT_CONFIG["fish_audio_voice_id"]),
+                "format": "wav",
+                "speed": float(config.get("fish_audio_speed", 1.0)),
+                "normalize": True,
+            }
+            request = urllib.request.Request(
+                "https://api.fish.audio/v1/tts",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "model": str(config.get("fish_audio_model") or "s2.1-pro-free"),
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=30) as response:
+                audio = response.read()
+            if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+                raise ValueError("Fish Audio returned data that is not a WAV file.")
+            # winsound plays locally; delete the temporary file after playback.
+            with tempfile.NamedTemporaryFile(prefix="darkspirit_voice_", suffix=".wav", delete=False) as handle:
+                wav_path = Path(handle.name)
+                handle.write(audio)
+            try:
+                winsound.PlaySound(str(wav_path), winsound.SND_FILENAME)
+            finally:
+                wav_path.unlink(missing_ok=True)
+        except urllib.error.HTTPError as exc:
+            logging.error("Fish Audio TTS request failed with HTTP %s; check API key, quota, and voice ID.", exc.code)
+        except Exception:
+            logging.exception("Fish Audio speech generation or playback failed.")
+
+    threading.Thread(target=synthesize_and_play, name="Darkspirit-FishAudio-TTS", daemon=True).start()
 
 
 def enroll_face() -> None:
@@ -171,18 +212,15 @@ def configure() -> None:
     print("To run quietly in the background, use start_companion.bat.")
 
 
-def listen_for_speech(model_path: str) -> None:
-    """Wait for a local Vosk transcript after the enrolled face is recognized."""
+def listen_for_speech(model_path: str, stop_event: threading.Event) -> None:
+    """Continuously transcribe locally; run this on its own worker thread."""
     try:
         import sounddevice as sd
         from vosk import KaldiRecognizer, Model
     except ImportError as exc:
         raise RuntimeError("Voice extras are missing. Run: uv sync --extra companion") from exc
     if not model_path or not Path(model_path).is_dir():
-        raise RuntimeError(
-            "Set vosk_model_path in companion.json to a downloaded Vosk English model folder."
-        )
-    import json as json_module
+        raise RuntimeError("Set vosk_model_path in companion.json to a downloaded Vosk English model folder.")
 
     recognizer = KaldiRecognizer(Model(model_path), 16000)
     audio_queue: queue.Queue[bytes] = queue.Queue(maxsize=30)
@@ -196,48 +234,43 @@ def listen_for_speech(model_path: str) -> None:
         except queue.Full:
             pass
 
-    speak("I'm listening. What would you like me to do?")
-    logging.info("Microphone listening began after face recognition.")
-    with sd.RawInputStream(samplerate=16000, blocksize=8000, dtype="int16", channels=1, callback=on_audio):
-        while True:
-            chunk = audio_queue.get()
-            if recognizer.AcceptWaveform(chunk):
-                transcript = json_module.loads(recognizer.Result()).get("text", "").strip()
-                if transcript:
-                    # Keep transcripts out of logs. Only explicitly allowlisted local
-                    # actions are executed; never pass speech to a shell or arbitrary code.
-                    command = " ".join(
-                        transcript.lower().strip().replace(".", "").replace(",", "").split()
-                    )
-                    if command in {"stop listening", "goodbye darkspirit", "go to sleep"}:
-                        speak("Okay. I'll wait until I recognize you again.")
-                        return
+    logging.info("Microphone listening started on its own worker; camera checks remain independent.")
+    with sd.RawInputStream(samplerate=16000, blocksize=4000, dtype="int16", channels=1, callback=on_audio):
+        while not stop_event.is_set():
+            try:
+                chunk = audio_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            if not recognizer.AcceptWaveform(chunk):
+                continue
+            transcript = json.loads(recognizer.Result()).get("text", "").strip()
+            if not transcript:
+                continue
 
-                    if command in {
-                        "open calculator",
-                        "launch calculator",
-                        "start calculator",
-                        "calculator",
-                    }:
-                        try:
-                            import subprocess
-                            subprocess.Popen(
-                                ["calc.exe"],
-                                shell=False,
-                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                            )
-                            logging.info("Allowlisted action executed: open calculator.")
-                            speak("Opening Calculator.")
-                        except OSError:
-                            logging.exception("Could not open Calculator.")
-                            speak("Sorry, I couldn't open Calculator.")
-                        continue
+            # Do not store raw transcripts. Only fixed, allowlisted commands can act.
+            command = " ".join(transcript.lower().strip().replace(".", "").replace(",", "").split())
+            if command in {"stop listening", "goodbye darkspirit", "go to sleep"}:
+                logging.info("Voice listener paused by a recognized stop phrase.")
+                speak("Okay. I'll wait until I recognize you again.")
+                return
 
-                    logging.info("Local speech transcript received; no allowlisted action matched.")
-                    speak(
-                        f"I heard you say: {transcript}. "
-                        "I can open Calculator so far, but my AI conversation connection isn't configured yet."
+            if command in {"open calculator", "launch calculator", "start calculator", "calculator"}:
+                try:
+                    import subprocess
+                    subprocess.Popen(
+                        ["calc.exe"],
+                        shell=False,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                     )
+                    logging.info("Allowlisted action executed: open calculator.")
+                    speak("Opening Calculator.")
+                except OSError:
+                    logging.exception("Could not open Calculator.")
+                    speak("Sorry, I couldn't open Calculator.")
+                continue
+
+            logging.info("Speech recognized; no allowlisted action matched.")
+            speak(f"I heard you. I can open Calculator so far, but my AI conversation connection isn't configured yet.")
 
 
 def run_background() -> None:
@@ -269,6 +302,8 @@ def run_background() -> None:
     greeting_reset_seconds = 30.0
     greeted = False
     last_recognized_at: float | None = None
+    voice_stop_event = threading.Event()
+    voice_thread: threading.Thread | None = None
     logging.info(
         "Background companion started in privacy mode: camera active for %.1fs, "
         "then released for %.1fs.",
@@ -321,13 +356,20 @@ def run_background() -> None:
                                 speak(f"Hello {name}. I'm Darkspirit. I'm here when you need me.")
                             greeted = True
                             if config.get("microphone_enabled") and config.get("listen_after_greeting"):
-                                try:
-                                    listen_for_speech(str(config.get("vosk_model_path", "")))
-                                except Exception:
-                                    logging.exception("Local voice input failed.")
-                                    config["microphone_enabled"] = False
-                                    logging.warning("Voice input disabled for this run after startup failure.")
-                                    speak("My microphone setup needs attention. I'll stay available without listening.")
+                                if voice_thread is None or not voice_thread.is_alive():
+                                    voice_stop_event.clear()
+
+                                    def voice_worker() -> None:
+                                        try:
+                                            listen_for_speech(str(config.get("vosk_model_path", "")), voice_stop_event)
+                                        except Exception:
+                                            logging.exception("Local voice input failed.")
+                                            speak("My microphone setup needs attention. I'll keep checking for your face.")
+
+                                    voice_thread = threading.Thread(
+                                        target=voice_worker, name="Darkspirit-Voice-Listener", daemon=True
+                                    )
+                                    voice_thread.start()
                     elif greeted and last_recognized_at is not None:
                         if now - last_recognized_at > greeting_reset_seconds:
                             greeted = False
@@ -341,8 +383,9 @@ def run_background() -> None:
 
             time.sleep(camera_sleep_seconds)
     except KeyboardInterrupt:
-        logging.info("Background companion stopped by keyboard interrupt.")
+        logging.info("Background companion received Ctrl+C in its attached console.")
     finally:
+        voice_stop_event.set()
         logging.info("Background companion stopped.")
 
 
