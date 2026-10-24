@@ -1,7 +1,7 @@
 import json
 import sys
-import types
 import threading
+import types
 
 import pytest
 
@@ -65,6 +65,7 @@ def test_speak_without_api_key_does_not_start_a_worker(monkeypatch, caplog):
 
 
 def test_background_stays_idle_when_camera_consent_is_off(monkeypatch, caplog):
+    caplog.set_level("INFO")
     monkeypatch.setattr(companion, "configure_logging", lambda: None)
     monkeypatch.setattr(companion, "load_config", lambda: companion.DEFAULT_CONFIG.copy())
 
