@@ -34,6 +34,7 @@ def test_mouse_path_policy_bounds_continuous_movement():
     assert bridge.MAX_MESSAGE_BYTES >= 2 * 1024 * 1024
     assert bridge.MAX_SCREENSHOT_BYTES <= 2_000_000
 
+
 def test_safe_label_hides_text_input_values():
     assert bridge._safe_label("a typed secret", "EditControl") == "[input contents hidden]"
     assert bridge._safe_label("enter password", "PasswordControl") == "[input contents hidden]"
