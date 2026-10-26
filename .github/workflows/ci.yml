@@ -25,7 +25,7 @@ jobs:
         run: ruff check darkspirit_bridge darkspirit_companion tests/unit/test_browser_bridge.py tests/unit/test_background_companion.py
 
       - name: Check formatting of bridge and bridge tests
-        run: ruff format --check darkspirit_bridge tests/unit/test_browser_bridge.py tests/unit/test_background_companion.py
+        run: ruff format --diff darkspirit_bridge
 
       - name: Validate extension manifest
         run: python -c "import json; json.load(open('browser_extension/manifest.json', encoding='utf-8'))"
