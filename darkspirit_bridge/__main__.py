@@ -11,6 +11,7 @@ import json
 import re
 import secrets
 import threading
+import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,7 +28,7 @@ VOICE_PORT = 17614
 VOICE_APP_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "DarkspiritAgent"
 VOICE_TOKEN_PATH = VOICE_APP_DIR / "voice-bridge.token"
 _voice_token = secrets.token_urlsafe(32)
-_voice_queue: deque[str] = deque(maxlen=20)
+_voice_queue: deque[dict[str, Any]] = deque(maxlen=20)
 _voice_queue_lock = threading.Lock()
 MAX_MESSAGE_BYTES = 32_768
 MAX_TOOL_OUTPUT_CHARS = 10_000
@@ -378,8 +379,19 @@ class VoiceHTTPHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/next" and self._authorized_extension():
             with _voice_queue_lock:
-                transcript = _voice_queue.popleft() if _voice_queue else ""
-            self._send(200, {"ok": True, "text": transcript}, origin)
+                item = _voice_queue.popleft() if _voice_queue else None
+            if item is None:
+                self._send(200, {"ok": True, "text": "", "queued_at": 0}, origin)
+            else:
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "text": item.get("text", ""),
+                        "queued_at": item.get("queued_at", 0),
+                    },
+                    origin,
+                )
             return
         self._send(403, {"ok": False, "error": "Unauthorized"}, origin)
 
@@ -401,7 +413,7 @@ class VoiceHTTPHandler(BaseHTTPRequestHandler):
             with _voice_queue_lock:
                 if len(_voice_queue) >= 20:
                     _voice_queue.popleft()
-                _voice_queue.append(transcript.strip())
+                _voice_queue.append({"text": transcript.strip(), "queued_at": time.time()})
             self._send(200, {"ok": True})
         except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
             self._send(400, {"ok": False, "error": "Invalid transcript payload"})
