@@ -197,7 +197,7 @@ def run() -> None:
     consent = show_message(
         "Start Darkspirit Gemini Voice in the background?\n\n"
         "• Shift+S starts microphone listening.\n"
-        "• Two seconds after your last recognized words, your microphone closes and the transcript is sent to Gemini.\n"
+        "• Two seconds after your last recognized words, your microphone closes and the transcript is sent to the active ChatGPT/Gemini tab.\n"
         "• Press Shift+S again to submit early and stop the microphone.\n"
         "• Gemini's reply is spoken by the Darkspirit browser extension.\n"
         "• Shift+Esc exits this background companion.\n\n"
@@ -413,7 +413,7 @@ def run() -> None:
         try:
             post_transcript(transcript, token)
             last_submit = now
-            logging.info("Transcript queued for Gemini (%d characters).", len(transcript))
+            logging.info("Transcript queued for the active AI tab (%d characters).", len(transcript))
             play_beep(False)
         except Exception:
             logging.exception("Could not queue the transcript for Gemini.")
@@ -423,7 +423,7 @@ def run() -> None:
                 flags=MB_ICONERROR | MB_TOPMOST,
             )
 
-    logging.info("Gemini voice companion ready. Shift+S starts; Shift+Esc exits.")
+    logging.info("Voice companion ready. Shift+S starts; Shift+Esc exits.")
     # A small loop monitors system-wide keys. The microphone itself opens only after Shift+S.
     try:
         while True:
