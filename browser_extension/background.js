@@ -259,9 +259,11 @@ async function pollVoiceQueue() {
     const data = await response.json();
     if (typeof data.text === "string" && data.text.trim()) {
       const serverQueuedAt = Number(data.queued_at);
-      pendingVoiceQueuedAt = Number.isFinite(serverQueuedAt) && serverQueuedAt > 0
-        ? serverQueuedAt * 1000
-        : Date.now();
+      if (!Number.isFinite(serverQueuedAt) || serverQueuedAt <= 0) {
+        console.warn("Darkspirit discarded an untimestamped voice prompt. Restart the local bridge to enable safe queue timestamps.");
+        return;
+      }
+      pendingVoiceQueuedAt = serverQueuedAt * 1000;
       if (Date.now() - pendingVoiceQueuedAt > VOICE_PENDING_TTL_MS) {
         console.warn("Darkspirit discarded an old voice prompt before delivery.");
         pendingVoiceText = null;
