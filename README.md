@@ -33,6 +33,8 @@ The project also includes a local, keyboard-driven voice companion for Gemini. R
 - Press **Shift+S** to start or stop microphone capture. Pressing it again submits early.
 - If you pause for two seconds after speaking, the microphone closes and the recognized text is submitted automatically.
 - The active ChatGPT or Gemini conversation receives the transcript, and its reply is read aloud with Chrome's default voice.
+- If you want spoken commands to reach the local PC task agent, enable **Route voice prompts through Darkspirit PC task mode** in the browser panel. This is off by default and requires desktop-sharing consent; computer actions still require separate enablement and approval.
+- The microphone closes if no speech is recognized for 15 seconds; choose a specific input in `%LOCALAPPDATA%\\DarkspiritAgent\\companion.json` with the `microphone_device` field if the Windows default mic is wrong.
 - Press **Shift+Esc** to stop the background listener.
 
 Speech is transcribed locally with Vosk. The recognized text is sent to Gemini. This shortcut does not enable computer-control actions; those remain a separate explicit choice in the Browser AI extension. Install/reload the unpacked extension from `browser_extension/` at `chrome://extensions` if it is not already enabled. See [`docs/gemini-voice.md`](docs/gemini-voice.md) for setup and troubleshooting.
