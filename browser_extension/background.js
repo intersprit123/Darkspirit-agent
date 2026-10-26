@@ -205,6 +205,15 @@ async function ensureAIContentScript(tab) {
   // the 60-second transcript TTL expires.
   if (!health || health.ok !== true) {
     try {
+      // Mark any stale panel so reinjection can rebuild its listener even if
+      // the page is being debugged without bumping the extension version.
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: function () {
+          const panel = document.getElementById("darkspirit-agent-panel");
+          if (panel) panel.dataset.darkspiritForceReinit = "true";
+        }
+      });
       try {
         await chrome.scripting.insertCSS({
           target: { tabId: tab.id },
