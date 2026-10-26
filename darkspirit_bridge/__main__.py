@@ -349,30 +349,66 @@ class VoiceHTTPHandler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def _authorized_extension(self) -> bool:
+        # MV3 extension service-worker fetches can arrive with Origin: null (or
+        # without Origin), even when the extension has host_permissions for this
+        # loopback URL. The random per-bridge token is the authorization check.
         origin = self.headers.get("Origin", "")
         token = self.headers.get("X-Darkspirit-Token", "")
-        return bool(EXTENSION_ORIGIN.fullmatch(origin)) and secrets.compare_digest(token, _voice_token)
+        origin_is_extension_context = (
+            not origin or origin == "null" or bool(EXTENSION_ORIGIN.fullmatch(origin))
+        )
+        return origin_is_extension_context and secrets.compare_digest(token, _voice_token)
 
     def do_OPTIONS(self):
         origin = self.headers.get("Origin", "")
-        if not EXTENSION_ORIGIN.fullmatch(origin):
-            self._send(403, {"ok": False, "error": "Origin not allowed"})
+        requested_method = self.headers.get("Access-Control-Request-Method", "").upper()
+        requested_headers = {
+            part.strip().lower()
+            for part in self.headers.get("Access-Control-Request-Headers", "").split(",")
+            if part.strip()
+        }
+        if EXTENSION_ORIGIN.fullmatch(origin):
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Darkspirit-Token")
+            self.send_header("Access-Control-Max-Age", "60")
+            self.end_headers()
             return
-        self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", origin)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Darkspirit-Token")
-        self.send_header("Access-Control-Max-Age", "60")
-        self.end_headers()
+        # A service-worker request can use an opaque Origin. Permit only the
+        # authenticated GET /next preflight in that case; never grant an opaque
+        # origin access to /token's response.
+        if (
+            origin == "null"
+            and self.path == "/next"
+            and requested_method == "GET"
+            and requested_headers == {"x-darkspirit-token"}
+        ):
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", "null")
+            self.send_header("Access-Control-Allow-Methods", "GET")
+            self.send_header("Access-Control-Allow-Headers", "X-Darkspirit-Token")
+            self.send_header("Access-Control-Max-Age", "60")
+            self.end_headers()
+            return
+        self._send(403, {"ok": False, "error": "Origin not allowed"})
 
     def do_GET(self):
         origin = self.headers.get("Origin", "")
-        if self.path == "/token" and EXTENSION_ORIGIN.fullmatch(origin):
+        extension_context = (
+            not origin or origin == "null" or bool(EXTENSION_ORIGIN.fullmatch(origin))
+        )
+        if self.path == "/token" and extension_context:
             body = json.dumps({"ok": True, "token": _voice_token}).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Cache-Control", "no-store")
+            # Only expose the token to an explicitly identified extension origin.
+            # Extension service workers with loopback host permission can read
+            # the response without CORS headers; ordinary web origins cannot.
+            if EXTENSION_ORIGIN.fullmatch(origin):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
