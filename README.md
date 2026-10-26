@@ -364,7 +364,7 @@ Made with ❤️ by [Jeomon George](https://github.com/Jeomon)
 
 This repository adds an optional browser-based path for ChatGPT and Gemini. It uses your existing signed-in AI website session and does not require an AI API key. Install dependencies with **install.bat**, run **start.bat** and select option 2, then load the **browser_extension** folder as an unpacked Edge/Chrome extension.
 
-The integration is experimental and requires manual pairing with a private token printed by the local bridge. Desktop information is sent to the AI website only after you confirm the privacy checkbox. Computer actions are disabled unless you enable them, and the extension asks for approval before each action by default. Shell, arbitrary-code, and direct file-management tools are not exposed.
+The integration is experimental and uses your signed-in browser session. Desktop information is sent to the AI website only after you confirm the privacy checkbox. The browser panel exposes the Windows-Use app, mouse, keyboard, scroll, wait, scrape, virtual desktop, multi-select/edit, shell, file, and memory tools, plus cursor/screen inspection and a bounded continuous mouse-path tool. Computer actions are disabled unless you enable them, and per-action approval is on by default. A separate opt-in checkbox attaches a compressed screenshot after each screen-changing action; screenshot sharing is off by default. See the browser AI guide for setup, limits, and privacy details.
 
 See [docs/browser-ai.md](docs/browser-ai.md) for complete setup, troubleshooting, privacy, and safety information. See [docs/credits.md](docs/credits.md) for third-party references.
 
