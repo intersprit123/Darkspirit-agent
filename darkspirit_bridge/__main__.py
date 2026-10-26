@@ -135,22 +135,22 @@ def get_tool_catalog() -> list[dict[str, Any]]:
                             },
                             "minItems": 2,
                             "maxItems": 20,
-                            "description": "A path of 2-20 [x, y] screen coordinates to cycle through."
+                            "description": "A path of 2-20 [x, y] screen coordinates to cycle through.",
                         },
                         "duration_seconds": {
                             "type": "number",
                             "minimum": 1,
                             "maximum": 20,
-                            "description": "How long to move, from 1 to 20 seconds."
+                            "description": "How long to move, from 1 to 20 seconds.",
                         },
                         "interval_ms": {
                             "type": "integer",
                             "minimum": 50,
                             "maximum": 500,
-                            "description": "Pause between cursor moves, from 50 to 500 milliseconds."
-                        }
+                            "description": "Pause between cursor moves, from 50 to 500 milliseconds.",
+                        },
                     },
-                    "required": ["points", "duration_seconds"]
+                    "required": ["points", "duration_seconds"],
                 },
             },
             {
@@ -361,8 +361,11 @@ async def handle_message(websocket, message: dict[str, Any]) -> None:
     if name == "capture_screenshot":
         if not _screenshots_enabled:
             await send_response(
-                websocket, "tool_result", rid, ok=False,
-                error="Screenshot sharing is off. Ask the user to enable the screenshot-sharing checkbox first."
+                websocket,
+                "tool_result",
+                rid,
+                ok=False,
+                error="Screenshot sharing is off. Ask the user to enable the screenshot-sharing checkbox first.",
             )
             return
         try:
@@ -386,14 +389,20 @@ async def handle_message(websocket, message: dict[str, Any]) -> None:
                 "data": base64.b64encode(image_bytes).decode("ascii"),
             }
             await send_response(
-                websocket, "tool_result", rid, ok=True,
+                websocket,
+                "tool_result",
+                rid,
+                ok=True,
                 text="Desktop screenshot captured for attachment to the AI conversation.",
                 screenshot=image_payload,
                 read_only=True,
             )
         except Exception as exc:
             await send_response(
-                websocket, "tool_result", rid, ok=False,
+                websocket,
+                "tool_result",
+                rid,
+                ok=False,
                 error="Could not capture screenshot: " + type(exc).__name__ + ": " + str(exc),
             )
         return
@@ -401,30 +410,40 @@ async def handle_message(websocket, message: dict[str, Any]) -> None:
     if name == "move_mouse_continuously":
         if not _actions_enabled:
             await send_response(
-                websocket, "tool_result", rid, ok=False,
-                error="Computer actions are disabled. Enable them in the extension and start a new task."
+                websocket,
+                "tool_result",
+                rid,
+                ok=False,
+                error="Computer actions are disabled. Enable them in the extension and start a new task.",
             )
             return
         points = arguments.get("points")
         duration = arguments.get("duration_seconds", 5)
         interval_ms = arguments.get("interval_ms", 120)
         if (
-            not isinstance(points, list) or not 2 <= len(points) <= 20
-            or not isinstance(duration, int | float) or isinstance(duration, bool)
+            not isinstance(points, list)
+            or not 2 <= len(points) <= 20
+            or not isinstance(duration, int | float)
+            or isinstance(duration, bool)
             or not 1 <= float(duration) <= 20
-            or not isinstance(interval_ms, int) or isinstance(interval_ms, bool)
+            or not isinstance(interval_ms, int)
+            or isinstance(interval_ms, bool)
             or not 50 <= interval_ms <= 500
         ):
             await send_response(
-                websocket, "tool_result", rid, ok=False,
-                error="Invalid continuous movement settings. Supply 2-20 points, duration_seconds 1-20, and interval_ms 50-500."
+                websocket,
+                "tool_result",
+                rid,
+                ok=False,
+                error="Invalid continuous movement settings. Supply 2-20 points, duration_seconds 1-20, and interval_ms 50-500.",
             )
             return
         normalized_points = []
         try:
             for point in points:
                 if (
-                    not isinstance(point, list) or len(point) != 2
+                    not isinstance(point, list)
+                    or len(point) != 2
                     or any(not isinstance(value, int) or isinstance(value, bool) for value in point)
                 ):
                     raise ValueError("Each point must be an integer [x, y] pair.")
@@ -437,8 +456,7 @@ async def handle_message(websocket, message: dict[str, Any]) -> None:
                 raise ValueError("All mouse points must be inside the primary screen bounds.")
         except Exception as exc:
             await send_response(
-                websocket, "tool_result", rid, ok=False,
-                error="Invalid mouse path: " + str(exc)
+                websocket, "tool_result", rid, ok=False, error="Invalid mouse path: " + str(exc)
             )
             return
         started = time.monotonic()
@@ -455,18 +473,26 @@ async def handle_message(websocket, message: dict[str, Any]) -> None:
                 await asyncio.sleep(interval_ms / 1000)
             stopped_early = not _actions_enabled
             await send_response(
-                websocket, "tool_result", rid, ok=True,
-                text=json.dumps({
-                    "moves_completed": moves,
-                    "elapsed_seconds": round(time.monotonic() - started, 2),
-                    "stopped_early": stopped_early,
-                    "note": "Mouse movement only; no click or drag was performed."
-                })
+                websocket,
+                "tool_result",
+                rid,
+                ok=True,
+                text=json.dumps(
+                    {
+                        "moves_completed": moves,
+                        "elapsed_seconds": round(time.monotonic() - started, 2),
+                        "stopped_early": stopped_early,
+                        "note": "Mouse movement only; no click or drag was performed.",
+                    }
+                ),
             )
         except Exception as exc:
             await send_response(
-                websocket, "tool_result", rid, ok=False,
-                error="Continuous mouse movement failed: " + type(exc).__name__ + ": " + str(exc)
+                websocket,
+                "tool_result",
+                rid,
+                ok=False,
+                error="Continuous mouse movement failed: " + type(exc).__name__ + ": " + str(exc),
             )
         return
 
@@ -567,6 +593,7 @@ async def handler(websocket) -> None:
 
 class VoiceHTTPHandler(BaseHTTPRequestHandler):
     """Loopback-only authenticated queue for local companion transcripts."""
+
     def log_message(self, fmt, *args):
         return
 
@@ -687,6 +714,7 @@ class VoiceHTTPHandler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True})
         except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
             self._send(400, {"ok": False, "error": "Invalid transcript payload"})
+
 
 def _run_voice_http_server() -> None:
     VOICE_APP_DIR.mkdir(parents=True, exist_ok=True)
