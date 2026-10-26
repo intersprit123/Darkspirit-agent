@@ -1,5 +1,6 @@
 const BRIDGE_URL = "ws://127.0.0.1:17613";
 const REQUEST_TIMEOUT_MS = 60000;
+const VOICE_PENDING_TTL_MS = 60000;
 
 function requestBridge(payload) {
   return new Promise(function (resolve, reject) {
@@ -127,6 +128,7 @@ function speakWithBrowserVoice(text, sender, sendResponse, enqueue) {
 let voicePollTimer = null;
 let voiceBridgeToken = null;
 let pendingVoiceText = null;
+let pendingVoiceQueuedAt = 0;
 let voicePollInFlight = false;
 let voiceDeliveryRetryAfter = 0;
 let lastVoicePollError = "";
@@ -179,8 +181,19 @@ async function ensureAITab() {
   return tab;
 }
 
+async function clearPendingVoice(reason) {
+  if (reason) console.warn("Darkspirit voice prompt discarded:", reason);
+  pendingVoiceText = null;
+  pendingVoiceQueuedAt = 0;
+  await chrome.storage.session.remove("darkspiritPendingVoiceText");
+}
+
 async function deliverPendingVoice() {
   if (!pendingVoiceText) return false;
+  if (pendingVoiceQueuedAt && Date.now() - pendingVoiceQueuedAt > VOICE_PENDING_TTL_MS) {
+    await clearPendingVoice("it was older than 60 seconds, so an old prompt cannot unexpectedly run later.");
+    return true;
+  }
   const tab = await ensureAITab();
   try {
     const response = await chrome.tabs.sendMessage(tab.id, {
@@ -191,6 +204,7 @@ async function deliverPendingVoice() {
       throw new Error(response && response.error ? response.error : "The AI page did not confirm prompt submission.");
     }
     pendingVoiceText = null;
+    pendingVoiceQueuedAt = 0;
     await chrome.storage.session.remove("darkspiritPendingVoiceText");
     console.info("Darkspirit voice transcript submitted to the active AI page.");
     return true;
@@ -211,8 +225,17 @@ async function pollVoiceQueue() {
   try {
     if (!pendingVoiceText) {
       const stored = await chrome.storage.session.get("darkspiritPendingVoiceText");
-      if (typeof stored.darkspiritPendingVoiceText === "string") {
-        pendingVoiceText = stored.darkspiritPendingVoiceText;
+      const saved = stored.darkspiritPendingVoiceText;
+      if (saved && typeof saved === "object" && typeof saved.text === "string") {
+        pendingVoiceText = saved.text.trim();
+        pendingVoiceQueuedAt = Number(saved.createdAt) || 0;
+        if (!pendingVoiceText || !pendingVoiceQueuedAt || Date.now() - pendingVoiceQueuedAt > VOICE_PENDING_TTL_MS) {
+          await clearPendingVoice("the saved prompt was empty, too old, or from an incomplete previous session.");
+        }
+      } else if (typeof saved === "string") {
+        // Old versions saved the transcript without a timestamp. Do not replay it
+        // into a live conversation after an extension update.
+        await clearPendingVoice("a legacy pending prompt had no timestamp.");
       }
     }
     if (pendingVoiceText) {
@@ -236,7 +259,13 @@ async function pollVoiceQueue() {
     const data = await response.json();
     if (typeof data.text === "string" && data.text.trim()) {
       pendingVoiceText = data.text.trim();
-      await chrome.storage.session.set({ darkspiritPendingVoiceText: pendingVoiceText });
+      pendingVoiceQueuedAt = Date.now();
+      await chrome.storage.session.set({
+        darkspiritPendingVoiceText: {
+          text: pendingVoiceText,
+          createdAt: pendingVoiceQueuedAt
+        }
+      });
       await deliverPendingVoice();
     }
   } catch (error) {
