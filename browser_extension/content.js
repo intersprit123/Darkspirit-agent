@@ -16,6 +16,7 @@
     '<div class="ds-note">Voice prompts are transcribed locally and sent to the active ChatGPT or Gemini conversation. Replies can be spoken using the browser voice. Computer actions stay off until explicitly enabled.</div>' +
     '<textarea id="ds-task" aria-label="Task" placeholder="What should Darkspirit Agent do on your PC?"></textarea>' +
     '<label><input id="ds-share" type="checkbox"> I understand desktop information is sent to this AI website.</label>' +
+    '<label><input id="ds-voice-task" type="checkbox"> Route voice prompts through Darkspirit PC task mode (requires consent; each computer action still needs approval).</label>' +
     '<label><input id="ds-actions" type="checkbox"> Enable computer actions for this task.</label>' +
     '<label><input id="ds-approve-each" type="checkbox" checked> Ask me before each app, mouse, or keyboard action.</label>' +
     '<label><input id="ds-speak-replies" type="checkbox" checked> Speak new AI replies aloud using the browser default voice.</label>' +
@@ -30,6 +31,7 @@
   const el = function (id) { return panel.querySelector("#" + id); };
   const taskInput = el("ds-task");
   const shareConsent = el("ds-share");
+  const voiceTaskToggle = el("ds-voice-task");
   const actionsToggle = el("ds-actions");
   const approvalToggle = el("ds-approve-each");
   const speakRepliesToggle = el("ds-speak-replies");
@@ -140,6 +142,28 @@
       // Voice submissions should receive a spoken reply on either supported AI site.
       speakRepliesToggle.checked = true;
       chrome.storage.local.set({ speakReplies: true });
+
+      // Optional desktop-task route. It is off by default and requires the user
+      // to enable desktop-sharing consent in this panel. Computer actions are
+      // still independently gated and retain per-action approval.
+      if (voiceTaskToggle.checked) {
+        taskInput.value = transcript;
+        if (!shareConsent.checked) {
+          setStatus("Voice transcript saved in the task box, but NOT sent. Check desktop-sharing consent, then click Start task.");
+          sendResponse({ ok: true });
+          return false;
+        }
+        if (session && session.running) {
+          setStatus("A Darkspirit task is already running. The new voice request is saved in the task box; stop the current task before starting it.");
+          sendResponse({ ok: true });
+          return false;
+        }
+        setStatus("Starting the spoken request through Darkspirit PC task mode…");
+        startButton.click();
+        sendResponse({ ok: true });
+        return false;
+      }
+
       if (document.visibilityState !== "visible") {
         const reason = "This Gemini/ChatGPT tab is not visible yet.";
         setStatus("Voice transcript is queued; waiting for this tab to become visible.");
