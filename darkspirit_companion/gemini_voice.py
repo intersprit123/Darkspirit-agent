@@ -290,6 +290,7 @@ def run() -> None:
             except (TypeError, ValueError):
                 default_index = -1
             if default_index >= 0:
+                microphone_device = default_index
                 selected_microphone = sd.query_devices(default_index)
                 logging.info(
                     "Using default microphone index=%s name=%s",
