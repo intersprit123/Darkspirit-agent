@@ -72,6 +72,9 @@ function loadBackground(overrides = {}) {
     Math,
     Date,
     JSON,
+    setInterval() { return 1; },
+    clearInterval() {},
+    fetch: async () => { throw new Error("Fetch is disabled in this unit test."); },
     console
   });
   assert.equal(typeof messageListener, "function");
