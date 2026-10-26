@@ -572,6 +572,7 @@
     stopButton.disabled = true;
     actionsToggle.disabled = false;
     approvalToggle.disabled = false;
+    screenFeedbackToggle.disabled = false;
     setStatus(message || "Task stopped.");
     try { await bridgeRequest({ type: "set_actions", enabled: false }); } catch (_) {}
     try { await bridgeRequest({ type: "set_screenshots", enabled: false }); } catch (_) {}
@@ -719,6 +720,7 @@
     stopButton.disabled = false;
     actionsToggle.disabled = true;
     approvalToggle.disabled = true;
+    screenFeedbackToggle.disabled = true;
     finalBox.textContent = "";
     setStatus("Connecting to the local bridge…");
     try {
@@ -757,6 +759,7 @@
       stopButton.disabled = true;
       actionsToggle.disabled = false;
       approvalToggle.disabled = false;
+      screenFeedbackToggle.disabled = false;
       setStatus(error && error.message ? error.message : String(error));
     }
   });
@@ -769,6 +772,7 @@
     stopButton.disabled = true;
     actionsToggle.disabled = false;
     approvalToggle.disabled = false;
+    screenFeedbackToggle.disabled = false;
     setStatus("Stop requested. The current tool call may finish; no further tool calls will be started.");
     bridgeRequest({ type: "set_actions", enabled: false }).catch(function () {});
     bridgeRequest({ type: "set_screenshots", enabled: false }).catch(function () {});
