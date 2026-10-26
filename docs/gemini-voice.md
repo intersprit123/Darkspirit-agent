@@ -36,6 +36,7 @@ Voice input normally goes to the active AI chat. To run a spoken request through
 - If the extension Console reports `Voice bridge is not running`, first check that the bridge is running and that `http://127.0.0.1:17614/token` is reachable from the extension. Version 0.3.3 handles opaque service-worker origins for this localhost token flow.
 - If it reports `Could not establish connection. Receiving end does not exist`, the selected AI tab may have a stale/missing content-script listener after an extension reload. Version 0.3.3 checks the recipient and attempts to inject the current extension-owned content script into the selected supported AI tab. If the page remains hidden, bring that AI tab to the front. Voice prompts still expire after 60 seconds so stale commands are not sent later.
 - If the extension reports `This Gemini/ChatGPT tab is not visible yet`, confirm that the intended tab is selected; direct diagnostic messages sent to a background/inactive tab can be rejected by the visibility guard.
+- A raw WebSocket `opening handshake failed` traceback can be caused by an older companion checking port 17613 with a bare TCP connection. The updated companion uses a proper WebSocket handshake for readiness checks; this warning alone does not prove voice delivery failed.
 - If transcripts submit but replies are silent, use the extension's **Test voice** button to check browser text-to-speech separately.
 
 
