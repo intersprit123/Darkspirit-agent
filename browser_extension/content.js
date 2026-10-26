@@ -12,7 +12,13 @@
   // stale UI and restore its listeners. Same-version duplicate injections exit.
   const extensionVersion = chrome.runtime.getManifest().version;
   const existingPanel = document.getElementById("darkspirit-agent-panel");
-  if (existingPanel && existingPanel.dataset.darkspiritVersion === extensionVersion) return;
+  const forceReinitialize = existingPanel &&
+    existingPanel.dataset.darkspiritForceReinit === "true";
+  if (
+    existingPanel &&
+    existingPanel.dataset.darkspiritVersion === extensionVersion &&
+    !forceReinitialize
+  ) return;
   if (existingPanel) existingPanel.remove();
 
   let session = null;
