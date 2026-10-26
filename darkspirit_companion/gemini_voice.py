@@ -32,6 +32,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_WS_PORT = 17613
 BRIDGE_HTTP_PORT = 17614
 SILENCE_SECONDS = 2.0
+NO_SPEECH_TIMEOUT_SECONDS = 15.0
 SAMPLE_RATE = 16000
 VK_SHIFT = 0x10
 VK_ESCAPE = 0x1B
@@ -320,6 +321,7 @@ def run() -> None:
     segments: list[str] = []
     last_partial = ""
     last_speech_update: float | None = None
+    listening_started_at: float | None = None
     listening = False
     combo_was_down = False
     shift_esc_was_down = False
@@ -342,7 +344,7 @@ def run() -> None:
                 break
 
     def start_listening() -> None:
-        nonlocal stream, recognizer, segments, last_partial, last_speech_update, listening
+        nonlocal stream, recognizer, segments, last_partial, last_speech_update, listening_started_at, listening
         drain_audio_queue()
         recognizer = KaldiRecognizer(model, SAMPLE_RATE)
         segments = []
@@ -363,11 +365,12 @@ def run() -> None:
             stream = None
             raise
         listening = True
+        listening_started_at = time.monotonic()
         logging.info("Microphone listening started by Shift+S.")
         play_beep(True)
 
     def finish_listening(submit: bool = True) -> None:
-        nonlocal stream, recognizer, segments, last_partial, last_speech_update, listening, last_submit
+        nonlocal stream, recognizer, segments, last_partial, last_speech_update, listening_started_at, listening, last_submit
         if stream is not None:
             try:
                 stream.stop()
@@ -396,6 +399,7 @@ def run() -> None:
         segments = []
         last_partial = ""
         last_speech_update = None
+        listening_started_at = None
         if not submit or not transcript:
             if not transcript:
                 logging.info("Listening stopped without recognized speech.")
@@ -474,10 +478,24 @@ def run() -> None:
                                 last_speech_update = now
                     except Exception:
                         logging.exception("Speech recognition error.")
+                # If nothing is recognized, stop after a bounded period so a wrong or
+                # silent input device cannot leave the microphone open indefinitely.
+                if (
+                    last_speech_update is None
+                    and listening_started_at is not None
+                    and time.monotonic() - listening_started_at >= NO_SPEECH_TIMEOUT_SECONDS
+                ):
+                    logging.warning(
+                        "No speech recognized after %.0f seconds. Closing microphone; check the selected input device.",
+                        NO_SPEECH_TIMEOUT_SECONDS,
+                    )
+                    finish_listening(submit=True)
+
                 # Use recognition changes rather than raw microphone energy, so fan noise
                 # cannot keep the microphone open forever.
                 if (
-                    last_speech_update is not None
+                    listening
+                    and last_speech_update is not None
                     and time.monotonic() - last_speech_update >= SILENCE_SECONDS
                     and (segments or last_partial)
                 ):
