@@ -151,7 +151,6 @@ def test_listener_stops_cleanly_when_stop_event_is_set(monkeypatch, tmp_path):
     assert companion.listen_for_speech(str(tmp_path), stop_event) is False
 
 
-
 def test_tts_uses_bounded_fifo_queue(monkeypatch):
     class FakeThread:
         def __init__(self, target, **_kwargs):
@@ -176,7 +175,6 @@ def test_tts_uses_bounded_fifo_queue(monkeypatch):
 
     assert [item[0] for item in speech_queue.queue] == ["First reply", "Second reply"]
     assert speech_queue.maxsize == 20
-
 
 
 def test_generated_wav_plays_through_sounddevice(monkeypatch, tmp_path):
