@@ -5,12 +5,21 @@
   const isChatGPT = host === "chatgpt.com" || host === "chat.openai.com";
   const isGemini = host === "gemini.google.com";
   if (!isChatGPT && !isGemini) return;
-  if (document.getElementById("darkspirit-agent-panel")) return;
+
+  // When the extension is reloaded, an old panel can remain in the page even
+  // though its content-script message listener is no longer connected. Mark the
+  // panel with the extension version so a freshly injected script can replace
+  // stale UI and restore its listeners. Same-version duplicate injections exit.
+  const extensionVersion = chrome.runtime.getManifest().version;
+  const existingPanel = document.getElementById("darkspirit-agent-panel");
+  if (existingPanel && existingPanel.dataset.darkspiritVersion === extensionVersion) return;
+  if (existingPanel) existingPanel.remove();
 
   let session = null;
   let pendingApproval = null;
   const panel = document.createElement("section");
   panel.id = "darkspirit-agent-panel";
+  panel.dataset.darkspiritVersion = extensionVersion;
   panel.innerHTML =
     '<div class="ds-heading"><span class="ds-title">Darkspirit Agent</span><span class="ds-badge">BROWSER AI</span></div>' +
     '<div class="ds-note">Voice prompts are transcribed locally and sent to the active ChatGPT or Gemini conversation. Replies can be spoken using the browser voice. Computer actions stay off until explicitly enabled.</div>' +
@@ -133,6 +142,16 @@
   });
 
   chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+    if (message && message.type === "darkspiritPing") {
+      sendResponse({
+        ok: true,
+        site: isGemini ? "Gemini" : "ChatGPT",
+        visible: document.visibilityState === "visible",
+        panelReady: panel.isConnected,
+        version: extensionVersion
+      });
+      return false;
+    }
     if (message && message.type === "darkspiritVoiceSubmit" && typeof message.text === "string") {
       const transcript = message.text.trim();
       if (!transcript) {
