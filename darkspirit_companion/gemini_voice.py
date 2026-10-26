@@ -199,9 +199,9 @@ def run() -> None:
         "• Shift+S starts microphone listening.\n"
         "• Two seconds after your last recognized words, your microphone closes and the transcript is sent to the active ChatGPT/Gemini tab.\n"
         "• Press Shift+S again to submit early and stop the microphone.\n"
-        "• Gemini's reply is spoken by the Darkspirit browser extension.\n"
+        "• The active ChatGPT/Gemini reply can be spoken by the browser extension.\n"
         "• Shift+Esc exits this background companion.\n\n"
-        "Audio is transcribed on this PC. The recognized text is sent to Gemini. "
+        "Audio is transcribed on this PC. The recognized text is sent to the active ChatGPT/Gemini tab. "
         "Computer-control actions are not enabled by this voice shortcut.\n\n"
         "Allow this session?",
         flags=MB_YESNO | MB_ICONQUESTION | MB_TOPMOST,
@@ -419,7 +419,7 @@ def run() -> None:
         except Exception:
             logging.exception("Could not queue the transcript for Gemini.")
             show_message(
-                "I couldn't send your transcript to Gemini. Check that the browser bridge is running.\n\n"
+                "I couldn't queue your transcript for the active AI tab. Check that the browser bridge is running.\n\n"
                 f"Log: {LOG_PATH}",
                 flags=MB_ICONERROR | MB_TOPMOST,
             )
