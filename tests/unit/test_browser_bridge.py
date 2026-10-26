@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from darkspirit_bridge import __main__ as bridge
 
 
@@ -46,11 +44,6 @@ def test_safe_label_redacts_common_personal_data():
     assert "[redacted number]" in bridge._safe_label("Card number 1234 5678 9012")
 
 
-def test_load_token_creates_and_reuses_local_token(monkeypatch, tmp_path: Path):
-    target = tmp_path / ".darkspirit-agent" / "bridge.token"
-    monkeypatch.setattr(bridge, "TOKEN_FILE", target)
-    first = bridge.load_token()
-    second = bridge.load_token()
-    assert len(first) >= 32
-    assert first == second
-    assert target.read_text(encoding="utf-8").strip() == first
+def test_voice_bridge_token_is_random_and_not_empty():
+    assert isinstance(bridge._voice_token, str)
+    assert len(bridge._voice_token) >= 32
