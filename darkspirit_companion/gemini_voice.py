@@ -220,6 +220,7 @@ def run() -> None:
         )
         raise RuntimeError("Missing voice dependencies.") from exc
 
+    microphone_device: int | None = None
     try:
         ensure_bridge()
         logging.info(
@@ -235,6 +236,68 @@ def run() -> None:
                     config = loaded
             except (OSError, json.JSONDecodeError):
                 logging.warning("Could not parse companion settings; using the bundled Vosk model.")
+        # Prefer an explicitly configured microphone name/index. Otherwise use
+        # sounddevice's current Windows default input device and log its identity.
+        configured_microphone = str(
+            config.get("microphone_device") or os.environ.get("DARKSPIRIT_MIC_DEVICE") or ""
+        ).strip()
+        if configured_microphone:
+            devices = list(sd.query_devices())
+            if configured_microphone.isdigit():
+                candidate_index = int(configured_microphone)
+                try:
+                    candidate = sd.query_devices(candidate_index)
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Configured microphone index {candidate_index} does not exist. "
+                        "Set microphone_device to an input device name in companion.json."
+                    ) from exc
+                if int(candidate.get("max_input_channels", 0)) < 1:
+                    raise RuntimeError(
+                        f"Configured device {candidate_index} is not an input microphone: {candidate.get('name', 'unknown')}."
+                    )
+                microphone_device = candidate_index
+            else:
+                matches = [
+                    (index, device)
+                    for index, device in enumerate(devices)
+                    if int(device.get("max_input_channels", 0)) > 0
+                    and configured_microphone.casefold() in str(device.get("name", "")).casefold()
+                ]
+                if not matches:
+                    available = sorted({
+                        str(device.get("name", "unknown"))
+                        for device in devices
+                        if int(device.get("max_input_channels", 0)) > 0
+                    })
+                    raise RuntimeError(
+                        f"No input microphone matched '{configured_microphone}'. Available inputs: "
+                        + "; ".join(available[:20])
+                    )
+                exact = [item for item in matches if str(item[1].get("name", "")).casefold() == configured_microphone.casefold()]
+                microphone_device = (exact or matches)[0][0]
+            selected_microphone = sd.query_devices(microphone_device)
+            logging.info(
+                "Using configured microphone index=%s name=%s",
+                microphone_device,
+                selected_microphone.get("name", "unknown"),
+            )
+        else:
+            default_input = sd.default.device[0]
+            try:
+                default_index = int(default_input) if default_input is not None else -1
+            except (TypeError, ValueError):
+                default_index = -1
+            if default_index >= 0:
+                selected_microphone = sd.query_devices(default_index)
+                logging.info(
+                    "Using default microphone index=%s name=%s",
+                    default_index,
+                    selected_microphone.get("name", "unknown"),
+                )
+            else:
+                logging.warning("No explicit default microphone index; using PortAudio's default input.")
+
         configured_model = str(config.get("vosk_model_path") or "").strip()
         model_path = Path(configured_model) if configured_model else PROJECT_ROOT / "vosk-small-en-us-0.15"
         if not model_path.is_dir():
@@ -290,6 +353,7 @@ def run() -> None:
             blocksize=4000,
             dtype="int16",
             channels=1,
+            device=microphone_device,
             callback=audio_callback,
         )
         try:
