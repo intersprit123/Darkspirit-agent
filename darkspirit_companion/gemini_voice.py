@@ -84,6 +84,7 @@ def bridge_websocket_ready() -> bool:
         with connect(
             f"ws://127.0.0.1:{BRIDGE_WS_PORT}",
             origin=probe_origin,
+            proxy=None,
             open_timeout=0.4,
             close_timeout=0.2,
         ) as websocket:
