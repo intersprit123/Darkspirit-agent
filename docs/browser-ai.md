@@ -7,13 +7,23 @@ Darkspirit Agent can use the AI chat page already open in Microsoft Edge or Goog
 - A Manifest V3 extension for ChatGPT and Gemini.
 - A localhost WebSocket bridge at 127.0.0.1:17613.
 - A pairing token stored under the current Windows user's home directory, not in Git.
-- A limited Windows-Use tool catalogue: application/window actions, mouse/keyboard actions, scrolling, waiting, and a read-only desktop summary.
-- Per-action confirmation enabled by default.
+- An expanded Windows-Use tool catalogue: app/window management, click/type/shortcut/scroll/move, wait, webpage scraping, virtual desktops, multi-select, multi-edit, file operations, memory, PowerShell shell commands, cursor/screen information, screenshot capture, and bounded continuous mouse movement.
+- Per-action confirmation enabled by default for state-changing tools, including shell and file/memory operations.
+- An optional **Attach a screenshot after each screen-changing action** setting. When enabled, Darkspirit captures a compressed screenshot after a GUI action and attempts to attach the image to the next ChatGPT/Gemini message so the model can verify the result.
+- Continuous mouse paths are bounded to 20 seconds, 20 path points, and 50–500 ms intervals; the Stop button requests cancellation at the next movement interval.
 - A 30-step limit per task.
 - Browser-native text-to-speech using the default system voice; no Fish Audio key or external speech service is needed.
 - An in-panel default-voice test button, stop button, and saved **Speak new AI replies aloud** setting.
 
-The browser bridge does not expose Windows-Use shell, arbitrary-code, direct file-management, or memory tools. Because UI automation can still be misused (for example, by opening a terminal in the UI), inspect each action preview before approving it. Do not approve an action you do not understand.
+The browser bridge does not expose a separate arbitrary-code execution tool, but it now exposes the Windows-Use PowerShell shell and file/memory tools when **Enable computer actions** is selected. These are powerful: every state-changing tool requires the approval prompt by default. Inspect the exact command, path, operation, and arguments before approving. Never approve an action you do not understand. The agent prompt tells the AI to avoid destructive or irreversible operations unless the user's task explicitly requests that exact operation and its preview is approved.
+
+## Expanded tools and screen feedback
+
+The in-panel task runner exposes the built-in and experimental Windows-Use tools that ship with this repository. This includes multi-select/multi-edit, PowerShell, file and persistent memory operations, virtual desktop management, webpage scraping, cursor coordinates, screen/window details, and a custom continuous mouse-path tool. The AI only sees the tools available in the task's catalogue; it should use tools when they help rather than calling them just to demonstrate them.
+
+The **Attach a screenshot after each screen-changing action** checkbox is off by default because a full screen can contain private information. When selected before **Start task**, screen-changing actions trigger a fresh compressed screenshot that is attached to the AI website chat along with the tool result. The checkbox also enables the explicit capture_screenshot tool. Screenshot sharing is disabled automatically when the task stops or finishes. The browser UI's file-upload internals can change, so if automatic attachment reports an error, refresh the AI tab or attach a screenshot manually.
+
+Read-only get_cursor_position, get_screen_info, get_desktop_state, and scrape_tool can be used in observe-only mode. Actions that change the desktop or local state remain unavailable unless computer actions are enabled. Per-action approval is checked by default. Continuous mouse movement is deliberately bounded and does not click or drag.
 
 ## Install dependencies
 
