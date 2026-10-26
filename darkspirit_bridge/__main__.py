@@ -285,7 +285,9 @@ async def handle_message(websocket, message: dict[str, Any]) -> None:
         return
     if kind == "set_screenshots":
         _screenshots_enabled = bool(message.get("enabled", False))
-        await send_response(websocket, "screenshots_mode", rid, screenshots_enabled=_screenshots_enabled)
+        await send_response(
+            websocket, "screenshots_mode", rid, screenshots_enabled=_screenshots_enabled
+        )
         print(
             "[bridge] Automatic screenshot sharing "
             + ("ENABLED for this session." if _screenshots_enabled else "disabled.")
@@ -428,7 +430,10 @@ async def handle_message(websocket, message: dict[str, Any]) -> None:
                     raise ValueError("Each point must be an integer [x, y] pair.")
                 normalized_points.append((point[0], point[1]))
             screen = get_desktop().get_screen_size()
-            if any(x < 0 or y < 0 or x >= screen.width or y >= screen.height for x, y in normalized_points):
+            if any(
+                x < 0 or y < 0 or x >= screen.width or y >= screen.height
+                for x, y in normalized_points
+            ):
                 raise ValueError("All mouse points must be inside the primary screen bounds.")
         except Exception as exc:
             await send_response(
@@ -558,8 +563,6 @@ async def handler(websocket) -> None:
             await handle_message(websocket, message)
     except (asyncio.TimeoutError, ConnectionClosed):
         return
-
-
 
 
 class VoiceHTTPHandler(BaseHTTPRequestHandler):
@@ -702,7 +705,9 @@ async def run_server() -> None:
     print("Darkspirit Agent — Browser AI Bridge")
     print("Listening locally at ws://" + HOST + ":" + str(PORT))
     print("Mode: actions disabled until explicitly enabled in the extension.")
-    threading.Thread(target=_run_voice_http_server, name="Darkspirit-Voice-HTTP", daemon=True).start()
+    threading.Thread(
+        target=_run_voice_http_server, name="Darkspirit-Voice-HTTP", daemon=True
+    ).start()
     print("Voice queue listening locally at http://" + VOICE_HOST + ":" + str(VOICE_PORT))
     print("Automatic local pairing enabled; no token is required.")
     print("Press Ctrl+C to stop. Port conflicts are reported; no process is killed.")
