@@ -18,6 +18,25 @@ function loadBackground(overrides = {}) {
         addListener(listener) {
           messageListener = listener;
         }
+      },
+      onStartup: {
+        addListener() {}
+      },
+      onInstalled: {
+        addListener() {}
+      }
+    },
+    alarms: {
+      onAlarm: {
+        addListener() {}
+      },
+      create() {}
+    },
+    storage: {
+      session: {
+        async get() { return {}; },
+        async set() {},
+        async remove() {}
       }
     },
     tts: {
