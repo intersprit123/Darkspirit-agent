@@ -64,10 +64,33 @@ def show_message(message: str, title: str = "Darkspirit Gemini Voice", flags: in
 
 
 def port_open(port: int) -> bool:
+    """Check a plain TCP listener such as the local HTTP voice queue."""
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=0.4):
             return True
     except OSError:
+        return False
+
+
+def bridge_websocket_ready() -> bool:
+    """Probe the browser bridge with a real WebSocket handshake, not raw TCP."""
+    try:
+        from websockets.sync.client import connect
+
+        # The bridge validates the Origin shape, then requires an authentication
+        # message before it declares the connection ready. This harmless local
+        # probe sends no tool calls and avoids noisy invalid-handshake tracebacks.
+        probe_origin = "chrome-extension://" + ("a" * 32)
+        with connect(
+            f"ws://127.0.0.1:{BRIDGE_WS_PORT}",
+            origin=probe_origin,
+            open_timeout=0.4,
+            close_timeout=0.2,
+        ) as websocket:
+            websocket.send(json.dumps({"type": "authenticate"}))
+            reply = json.loads(websocket.recv(timeout=0.5))
+            return isinstance(reply, dict) and reply.get("type") == "ready"
+    except Exception:
         return False
 
 
@@ -101,7 +124,7 @@ def open_gemini() -> None:
 
 
 def ensure_bridge() -> subprocess.Popen[Any] | None:
-    ws_open = port_open(BRIDGE_WS_PORT)
+    ws_open = bridge_websocket_ready()
     http_open = port_open(BRIDGE_HTTP_PORT)
     if ws_open and http_open and TOKEN_PATH.is_file():
         token = TOKEN_PATH.read_text(encoding="utf-8").strip()
@@ -132,7 +155,7 @@ def ensure_bridge() -> subprocess.Popen[Any] | None:
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             break
-        if port_open(BRIDGE_WS_PORT) and port_open(BRIDGE_HTTP_PORT) and TOKEN_PATH.is_file():
+        if bridge_websocket_ready() and port_open(BRIDGE_HTTP_PORT) and TOKEN_PATH.is_file():
             if TOKEN_PATH.read_text(encoding="utf-8").strip():
                 logging.info("Started the Darkspirit browser bridge (PID %s).", proc.pid)
                 return proc
