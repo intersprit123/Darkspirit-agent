@@ -181,6 +181,98 @@ async function ensureAITab() {
   return tab;
 }
 
+function wait(ms) {
+  return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+async function pingAITab(tabId) {
+  return chrome.tabs.sendMessage(tabId, { type: "darkspiritPing" });
+}
+
+async function ensureAIContentScript(tab) {
+  let health = null;
+  let lastError = "";
+
+  try {
+    health = await pingAITab(tab.id);
+  } catch (error) {
+    lastError = error && error.message ? error.message : String(error);
+  }
+
+  // An extension reload can leave an already-open AI tab with a stale DOM
+  // panel but no live message receiver. Recover by injecting the current
+  // extension-owned content script instead of retrying a dead receiver until
+  // the 60-second transcript TTL expires.
+  if (!health || health.ok !== true) {
+    try {
+      try {
+        await chrome.scripting.insertCSS({
+          target: { tabId: tab.id },
+          files: ["content.css"]
+        });
+      } catch (cssError) {
+        // The stylesheet may already have been inserted by the manifest.
+        console.debug("Darkspirit content CSS injection was skipped:", cssError);
+      }
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"]
+      });
+    } catch (error) {
+      const detail = error && error.message ? error.message : String(error);
+      throw new Error(
+        "Could not initialize Darkspirit on the selected AI tab. " +
+        "Check the extension's site access and reload the tab once. " + detail
+      );
+    }
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await wait(150);
+      try {
+        health = await pingAITab(tab.id);
+        if (health && health.ok === true) break;
+      } catch (error) {
+        lastError = error && error.message ? error.message : String(error);
+      }
+    }
+  }
+
+  if (!health || health.ok !== true) {
+    throw new Error(
+      "Darkspirit could not establish a live content script on the selected AI tab. " +
+      (lastError ? "Last message error: " + lastError : "Try refreshing that AI tab.")
+    );
+  }
+
+  // The background activates the target tab before calling this helper, but a
+  // brief visibility transition is possible when switching tabs/windows.
+  for (let attempt = 0; !health.visible && attempt < 10; attempt += 1) {
+    await wait(150);
+    try {
+      health = await pingAITab(tab.id);
+    } catch (error) {
+      lastError = error && error.message ? error.message : String(error);
+      break;
+    }
+    if (!health || health.ok !== true) break;
+  }
+
+  if (!health || health.ok !== true) {
+    throw new Error(
+      "The selected AI tab stopped responding before voice submission." +
+      (lastError ? " " + lastError : "")
+    );
+  }
+  if (health.panelReady !== true) {
+    throw new Error("Darkspirit's page panel did not initialize on the selected AI tab.");
+  }
+  if (health.visible !== true) {
+    throw new Error("The selected AI tab is still hidden. Bring it to the front and try again.");
+  }
+
+  return health;
+}
+
 async function clearPendingVoice(reason) {
   if (reason) console.warn("Darkspirit voice prompt discarded:", reason);
   pendingVoiceText = null;
@@ -194,8 +286,9 @@ async function deliverPendingVoice() {
     await clearPendingVoice("it was older than 60 seconds, so an old prompt cannot unexpectedly run later.");
     return true;
   }
-  const tab = await ensureAITab();
   try {
+    const tab = await ensureAITab();
+    const health = await ensureAIContentScript(tab);
     const response = await chrome.tabs.sendMessage(tab.id, {
       type: "darkspiritVoiceSubmit",
       text: pendingVoiceText
@@ -206,11 +299,15 @@ async function deliverPendingVoice() {
     pendingVoiceText = null;
     pendingVoiceQueuedAt = 0;
     await chrome.storage.session.remove("darkspiritPendingVoiceText");
-    console.info("Darkspirit voice transcript submitted to the active AI page.");
+    console.info(
+      "Darkspirit voice transcript submitted to " + health.site +
+      " (tab " + tab.id + ", content script " + health.version + ")."
+    );
     return true;
   } catch (error) {
     // Keep the transcript and retry until the page confirms that submission
-    // succeeded. A delivered extension message alone is not a successful send.
+    // succeeded. Missing listeners trigger one controlled content-script recovery
+    // attempt before this retry path is reached.
     const detail = error && error.message ? error.message : String(error);
     voiceDeliveryRetryAfter = Date.now() + 2500;
     console.warn("Darkspirit voice transcript is still pending:", detail);
