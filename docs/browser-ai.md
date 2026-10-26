@@ -7,11 +7,23 @@ Darkspirit Agent can use the AI chat page already open in Microsoft Edge or Goog
 - A Manifest V3 extension for ChatGPT and Gemini.
 - A localhost WebSocket bridge at 127.0.0.1:17613.
 - A pairing token stored under the current Windows user's home directory, not in Git.
-- A limited Windows-Use tool catalogue: application/window actions, mouse/keyboard actions, scrolling, waiting, and a read-only desktop summary.
-- Per-action confirmation enabled by default.
+- An expanded Windows-Use tool catalogue: app/window management, click/type/shortcut/scroll/move, wait, webpage scraping, virtual desktops, multi-select, multi-edit, file operations, memory, PowerShell shell commands, cursor/screen information, screenshot capture, and bounded continuous mouse movement.
+- Per-action confirmation enabled by default for state-changing tools, including shell and file/memory operations.
+- An optional **Attach a screenshot after each screen-changing action** setting. When enabled, Darkspirit captures a compressed screenshot after a GUI action and attempts to attach the image to the next ChatGPT/Gemini message so the model can verify the result.
+- Continuous mouse paths are bounded to 20 seconds, 20 path points, and 50–500 ms intervals; the Stop button requests cancellation at the next movement interval.
 - A 30-step limit per task.
+- Browser-native text-to-speech using the default system voice; no Fish Audio key or external speech service is needed.
+- An in-panel default-voice test button, stop button, and saved **Speak new AI replies aloud** setting.
 
-The browser bridge does not expose Windows-Use shell, arbitrary-code, direct file-management, or memory tools. Because UI automation can still be misused (for example, by opening a terminal in the UI), inspect each action preview before approving it. Do not approve an action you do not understand.
+The browser bridge does not expose a separate arbitrary-code execution tool, but it now exposes the Windows-Use PowerShell shell and file/memory tools when **Enable computer actions** is selected. These are powerful: every state-changing tool requires the approval prompt by default. Inspect the exact command, path, operation, and arguments before approving. Never approve an action you do not understand. The agent prompt tells the AI to avoid destructive or irreversible operations unless the user's task explicitly requests that exact operation and its preview is approved.
+
+## Expanded tools and screen feedback
+
+The in-panel task runner exposes the built-in and experimental Windows-Use tools that ship with this repository. This includes multi-select/multi-edit, PowerShell, file and persistent memory operations, virtual desktop management, webpage scraping, cursor coordinates, screen/window details, and a custom continuous mouse-path tool. The AI only sees the tools available in the task's catalogue; it should use tools when they help rather than calling them just to demonstrate them.
+
+The **Attach a screenshot after each screen-changing action** checkbox is off by default because a full screen can contain private information. When selected before **Start task**, screen-changing actions trigger a fresh compressed screenshot that is attached to the AI website chat along with the tool result. The checkbox also enables the explicit capture_screenshot tool. Screenshot sharing is disabled automatically when the task stops or finishes. The browser UI's file-upload internals can change, so if automatic attachment reports an error, refresh the AI tab or attach a screenshot manually.
+
+Read-only get_cursor_position, get_screen_info, get_desktop_state, and scrape_tool can be used in observe-only mode. Actions that change the desktop or local state remain unavailable unless computer actions are enabled. Per-action approval is checked by default. Continuous mouse movement is deliberately bounded and does not click or drag.
 
 ## Install dependencies
 
@@ -34,6 +46,28 @@ This does not install a browser, alter browser profiles, download an AI model, o
 8. Choose **Test bridge**. It should report that the bridge is connected and show the number of available tools.
 
 Never commit the pairing token or share it in screenshots, chat messages, or issues. If the token is exposed, delete the local token file at %USERPROFILE%\.darkspirit-agent\bridge.token and restart the bridge to generate a new one, then save the new token in the extension popup.
+
+## Microphone and continuous face recognition
+
+- The Python companion keeps the webcam open for continuous face detection while camera consent and face enrollment remain enabled. This avoids repeatedly opening and closing the camera, so the hardware indicator may remain on while Darkspirit is running.
+- The enrolled face is recognized locally. Other visible faces can be detected by the camera, but are not identified as named people unless separately enrolled. This companion does not upload face images.
+- The browser panel now includes **Start microphone**. Click it to start speech recognition; recognized words are appended to the task field. Support varies by browser, and some browser speech-recognition implementations may use an online service.
+- An extension cannot silently grant Chrome/Edge camera or microphone permissions. To remember a permission, open ChatGPT or Gemini, select the site-controls icon beside the address bar, open **Site settings**, and set **Camera** and **Microphone** to **Allow** if that site actually needs them; reload the tab. For the Python companion, grant access under **Windows Settings → Privacy & security → Camera / Microphone**. Browser and Windows permissions remain under their control.
+- Gemini reply detection uses best-effort page selectors and announces stable new replies with browser text-to-speech when **Speak new AI replies aloud** is enabled. Reload the Gemini tab after updating the extension.
+
+## Default voice and speech testing
+
+On ChatGPT or Gemini pages, the extension can read new assistant replies aloud using the browser's built-in `chrome.tts` extension API. On Windows, Chromium's extension TTS uses operating-system speech synthesis by default and chooses an appropriate voice for the requested language. The extension requests English (United States) and does not select a custom voice, call Fish Audio, or need a speech API key. The actual voice therefore depends on the default voice installed and selected on Windows/browser.
+
+The panel's **Speak new AI replies aloud** checkbox is on by default and is remembered in extension storage. **Test voice** speaks a short sample, and **Stop voice** cancels queued/current speech. Tool-call JSON is not read aloud; a final `done_tool` answer may be spoken. These controls only change speech, not the bridge task loop.
+
+To test:
+1. Open a ChatGPT or Gemini page and refresh it after reloading the extension.
+2. Select **Test voice** in the Darkspirit panel. You should hear: “Hello! This is Darkspirit using your browser's default voice.”
+3. Ask the AI a simple question and leave **Speak new AI replies aloud** checked.
+4. If the test button is accepted but silent, check Windows output volume and Settings > Accessibility > Narrator/Voice or Windows speech settings, then check the extension's service-worker console for a TTS error. The extension reports browser TTS errors in the panel when the page is open.
+
+This is local browser/OS speech synthesis rather than a custom character voice. Browser support is documented at [Chrome's TTS API reference](https://developer.chrome.com/docs/extensions/reference/api/tts) and [MDN's Web Speech API reference](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis).
 
 ## Run a first task
 
@@ -71,3 +105,17 @@ The bridge does not kill programs if the port is occupied. Close the actual prog
 This mode sends the task and initial desktop accessibility summary to the AI website in the active tab. The AI website is a third-party service; its normal account, retention, and policy conditions apply. Do not use this mode with sensitive screens.
 
 The bridge binds to 127.0.0.1, validates a random token, rejects other browser origins, and only dispatches an explicit allow-list. It is not a security boundary against malware running under your Windows account. Keep the extension and token private, and stop the bridge when you are finished.
+
+
+## CMD microphone → active ChatGPT/Gemini tab
+
+The foreground voice bridge is separate from the background face-recognition listener and from computer-control consent.
+
+1. Start the local bridge using `start.bat` → option 2 and keep it running.
+2. Reload the unpacked extension from `chrome://extensions` or `edge://extensions`, then refresh the ChatGPT or Gemini tab.
+3. In a terminal at the repository root, run `python -m darkspirit_companion --voice-browser` (or the equivalent command in your environment).
+4. Type `y` only if you want to grant microphone and transcript-submission permission for this run. Permission is not persisted; restart requires approval again.
+5. Speak normally. Vosk transcription is local. After five seconds without speech, the companion submits the transcript through the localhost queue to the active ChatGPT/Gemini tab. Keep the desired AI tab focused and visible.
+6. Say “stop listening” or press Ctrl+C to stop. This does not enable desktop actions; computer actions still require their separate browser-panel consent and per-action approval.
+
+The bridge binds to loopback only and creates a random per-run token in `%LOCALAPPDATA%\\DarkspiritAgent\\voice-bridge.token`. Do not share that file. The token is replaced when the bridge restarts. No audio is uploaded by the Vosk transcription path; the resulting text is sent to the AI website when submitted.

@@ -1,9 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Darkspirit Agent — Browser AI",
-  "version": "0.1.0",
-  "description": "Connect a signed-in ChatGPT or Gemini webpage to the local Darkspirit Agent bridge. No AI API key required.",
-  "permissions": ["storage"],
+  "version": "0.3.4",
+  "description": "Connect ChatGPT and Gemini to the local Darkspirit voice companion, submit microphone transcripts, and speak AI replies aloud.",
+  "permissions": [
+    "storage",
+    "tts",
+    "tabs",
+    "alarms",
+    "windows",
+    "scripting"
+  ],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
@@ -19,9 +26,17 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*", "https://gemini.google.com/*"],
-      "js": ["content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_idle"
     }
   ]

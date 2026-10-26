@@ -9,7 +9,7 @@ readme = "README.md"
 license = 'MIT'
 license-files = ["LICENSE"]
 urls = { homepage = "https://github.com/CursorTouch" }
-keywords = ["windows", "agent", "ai", "desktop","ai agent","automation"]
+keywords = ["windows", "agent", "desktop", "ai agent", "automation"]
 requires-python = ">=3.10"
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -73,6 +73,12 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "ruff>=0.12.1",
 ]
+companion = [
+    "opencv-contrib-python>=4.10.0,<5.0.0",
+    "numpy>=1.26.0",
+    "sounddevice>=0.5.0",
+    "vosk>=0.3.45",
+]
 speech = [
     "pyaudio>=0.2.14",
     "elevenlabs>=1.50.0",
@@ -84,7 +90,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
-packages = ["windows_use", "darkspirit_bridge"]
+packages = ["windows_use", "darkspirit_bridge", "darkspirit_companion"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

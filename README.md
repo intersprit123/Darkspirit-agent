@@ -26,6 +26,19 @@
 
 Give it a task in plain English. It handles the rest.
 
+## Darkspirit Gemini Voice (Windows)
+
+The project also includes a local, keyboard-driven voice companion for Gemini. Run `start_gemini_voice.bat` (or choose **5. Start Gemini voice assistant** from `start.bat`), approve the session prompt, and keep Chrome open.
+
+- Press **Shift+S** to start or stop microphone capture. Pressing it again submits early.
+- If you pause for two seconds after speaking, the microphone closes and the recognized text is submitted automatically.
+- The active ChatGPT or Gemini conversation receives the transcript, and its reply is read aloud with Chrome's default voice.
+- If you want spoken commands to reach the local PC task agent, enable **Route voice prompts through Darkspirit PC task mode** in the browser panel. This is off by default and requires desktop-sharing consent; computer actions still require separate enablement and approval.
+- The microphone closes if no speech is recognized for 15 seconds; choose a specific input in `%LOCALAPPDATA%\\DarkspiritAgent\\companion.json` with the `microphone_device` field if the Windows default mic is wrong.
+- Press **Shift+Esc** to stop the background listener.
+
+Speech is transcribed locally with Vosk. The recognized text is sent to Gemini. This shortcut does not enable computer-control actions; those remain a separate explicit choice in the Browser AI extension. Install/reload the unpacked extension from `browser_extension/` at `chrome://extensions` if it is not already enabled. See [`docs/gemini-voice.md`](docs/gemini-voice.md) for setup and troubleshooting.
+
 ## What It Can Do
 
 - Open, switch between, and resize application windows
@@ -351,6 +364,15 @@ Made with ❤️ by [Jeomon George](https://github.com/Jeomon)
 
 This repository adds an optional browser-based path for ChatGPT and Gemini. It uses your existing signed-in AI website session and does not require an AI API key. Install dependencies with **install.bat**, run **start.bat** and select option 2, then load the **browser_extension** folder as an unpacked Edge/Chrome extension.
 
-The integration is experimental and requires manual pairing with a private token printed by the local bridge. Desktop information is sent to the AI website only after you confirm the privacy checkbox. Computer actions are disabled unless you enable them, and the extension asks for approval before each action by default. Shell, arbitrary-code, and direct file-management tools are not exposed.
+The integration is experimental and uses your signed-in browser session. Desktop information is sent to the AI website only after you confirm the privacy checkbox. The browser panel exposes the Windows-Use app, mouse, keyboard, scroll, wait, scrape, virtual desktop, multi-select/edit, shell, file, and memory tools, plus cursor/screen inspection and a bounded continuous mouse-path tool. Computer actions are disabled unless you enable them, and per-action approval is on by default. A separate opt-in checkbox attaches a compressed screenshot after each screen-changing action; screenshot sharing is off by default. See the browser AI guide for setup, limits, and privacy details.
 
 See [docs/browser-ai.md](docs/browser-ai.md) for complete setup, troubleshooting, privacy, and safety information. See [docs/credits.md](docs/credits.md) for third-party references.
+
+
+## Browser extension default voice
+
+The Browser AI extension can read new ChatGPT/Gemini replies aloud using Chromium's built-in default system voice. It does not need a Fish Audio API key. Refresh the unpacked extension in `edge://extensions` or `chrome://extensions`, refresh the AI webpage, then use **Test voice** in the panel or extension popup. See [docs/browser-ai.md](docs/browser-ai.md#default-voice-and-speech-testing) for setup and troubleshooting.
+
+## Background companion prototype
+
+An opt-in background-first Windows companion prototype is available in `darkspirit_companion`. It supports local face enrollment and a local greeting, with optional offline speech capture. Camera and microphone are disabled by default; see [docs/background-companion.md](docs/background-companion.md) for setup and important limitations. The browser AI bridge remains separate and unchanged.

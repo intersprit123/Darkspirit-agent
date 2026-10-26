@@ -44,8 +44,8 @@ if errorlevel 1 (
   )
 )
 
-echo [1/3] Synchronizing dependencies from pyproject.toml and uv.lock...
-"%UV_EXE%" sync --extra dev
+echo [1/3] Synchronizing dependencies, tests, face recognition, and offline voice packages...
+"%UV_EXE%" sync --extra dev --extra companion
 if errorlevel 1 (
   echo [ERROR] Dependency synchronization failed.
   pause

@@ -6,6 +6,7 @@ title Darkspirit Agent
 if /I "%~1"=="--install" goto install
 if /I "%~1"=="--browser-bridge" goto browser_bridge
 if /I "%~1"=="--local-ollama" goto local_ollama
+if /I "%~1"=="--companion" goto companion
 
 :menu
 cls
@@ -16,10 +17,14 @@ echo.
 echo  1. Install / update all project dependencies
 echo  2. Start Browser AI bridge (ChatGPT / Gemini)
 echo  3. Start local Ollama agent (computer control)
-echo  4. Exit
+echo  4. Start background companion (no UI window)
+echo  5. Start Gemini voice assistant (Shift+S)
+echo  6. Exit
 echo.
-choice /c 1234 /n /m "Select 1-4: "
-if errorlevel 4 exit /b 0
+choice /c 123456 /n /m "Select 1-6: "
+if errorlevel 6 exit /b 0
+if errorlevel 5 goto gemini_voice
+if errorlevel 4 goto companion
 if errorlevel 3 goto local_ollama
 if errorlevel 2 goto browser_bridge
 if errorlevel 1 goto install
@@ -69,4 +74,19 @@ set "RC=%ERRORLEVEL%"
 echo.
 echo Ollama agent exited with code %RC%.
 pause
+goto menu
+
+:gemini_voice
+call "%~dp0start_gemini_voice.bat"
+goto menu
+
+:companion
+if not exist ".venv\Scripts\pythonw.exe" (
+  echo [ERROR] Dependencies are not installed yet. Choose option 1 first.
+  pause
+  goto menu
+)
+start "" ".venv\Scripts\pythonw.exe" -m darkspirit_companion --background
+echo Background companion launch requested. Logs: %LOCALAPPDATA%\DarkspiritAgent\companion.log
+timeout /t 2 >nul
 goto menu

@@ -11,6 +11,9 @@ wheels/
 # Virtual environments
 .venv
 .env
+
+# Local speech-recognition model (download separately; do not commit model binaries)
+vosk-small-en-us-0.15/
 sandbox
 *.ipynb
 __pycache__
