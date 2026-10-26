@@ -33,7 +33,10 @@ Voice input normally goes to the active AI chat. To run a spoken request through
 - Check `%LOCALAPPDATA%\DarkspiritAgent\bridge.log` if the local bridge fails to start.
 - If another bridge window is already running, close duplicate Darkspirit bridge windows and retry.
 - If no microphone is detected, check Windows **Settings → Privacy & security → Microphone**.
-- If transcripts submit but replies are silent, reload the browser extension and use its **Test default voice** button.
+- If the extension Console reports `Voice bridge is not running`, first check that the bridge is running and that `http://127.0.0.1:17614/token` is reachable from the extension. Version 0.3.3 handles opaque service-worker origins for this localhost token flow.
+- If it reports `Could not establish connection. Receiving end does not exist`, the selected AI tab may have a stale/missing content-script listener after an extension reload. Version 0.3.3 checks the recipient and attempts to inject the current extension-owned content script into the selected supported AI tab. If the page remains hidden, bring that AI tab to the front. Voice prompts still expire after 60 seconds so stale commands are not sent later.
+- If the extension reports `This Gemini/ChatGPT tab is not visible yet`, confirm that the intended tab is selected; direct diagnostic messages sent to a background/inactive tab can be rejected by the visibility guard.
+- If transcripts submit but replies are silent, use the extension's **Test voice** button to check browser text-to-speech separately.
 
 
 ## Microphone selection and troubleshooting
