@@ -10,6 +10,7 @@ import asyncio
 import base64
 import io
 import json
+import os
 import re
 import secrets
 import threading
@@ -17,7 +18,6 @@ import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import os
 from typing import Any
 
 from websockets.asyncio.server import serve
@@ -408,7 +408,7 @@ async def handle_message(websocket, message: dict[str, Any]) -> None:
         interval_ms = arguments.get("interval_ms", 120)
         if (
             not isinstance(points, list) or not 2 <= len(points) <= 20
-            or not isinstance(duration, (int, float)) or isinstance(duration, bool)
+            or not isinstance(duration, int | float) or isinstance(duration, bool)
             or not 1 <= float(duration) <= 20
             or not isinstance(interval_ms, int) or isinstance(interval_ms, bool)
             or not 50 <= interval_ms <= 500
