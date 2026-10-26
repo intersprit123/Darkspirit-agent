@@ -258,8 +258,17 @@ async function pollVoiceQueue() {
     if (!response.ok) throw new Error("Voice queue request failed");
     const data = await response.json();
     if (typeof data.text === "string" && data.text.trim()) {
+      const serverQueuedAt = Number(data.queued_at);
+      pendingVoiceQueuedAt = Number.isFinite(serverQueuedAt) && serverQueuedAt > 0
+        ? serverQueuedAt * 1000
+        : Date.now();
+      if (Date.now() - pendingVoiceQueuedAt > VOICE_PENDING_TTL_MS) {
+        console.warn("Darkspirit discarded an old voice prompt before delivery.");
+        pendingVoiceText = null;
+        pendingVoiceQueuedAt = 0;
+        return;
+      }
       pendingVoiceText = data.text.trim();
-      pendingVoiceQueuedAt = Date.now();
       await chrome.storage.session.set({
         darkspiritPendingVoiceText: {
           text: pendingVoiceText,
